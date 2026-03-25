@@ -23,26 +23,18 @@ module isa_coprocessador (
     output reg wren_w, wren_img, wren_bias, wren_beta
 );
 
-    // =========================
     // Parâmetros do sistema
-    // =========================
     parameter MAX_W    = 17'd100352;
 
-    // =========================
     // Decodificação da instrução
-    // =========================
     wire [3:0]  opcode  = instrucao[31:28];
     wire [11:0] addr_in = instrucao[27:16];
     wire [15:0] data_in = instrucao[15:0];
 
-    // =========================
-    // Contadores internos
-    // =========================
+	// Contador para w_addr
     reg [16:0] count_w;
 
-    // =========================
     // Lógica principal
-    // =========================
     always @(posedge clk) begin
         if (rst) begin
             // Reset geral
@@ -63,18 +55,14 @@ module isa_coprocessador (
             if (hps_write) begin
                 case (opcode)
 
-                    // =========================
-                    // STORE IMG (endereço direto)
-                    // =========================
+                    // STORE IMG
                     4'h1: begin
                         img_addr <= addr_in[9:0];
                         data_to_mem  <= data_in;
                         wren_img     <= 1'b1;
                     end
-
-                    // =========================
-                    // STORE W (auto-incremento)
-                    // =========================
+					
+                    // STORE W 
                     4'h2: begin
                         if (count_w < MAX_W) begin
                             w_addr  <= count_w;
@@ -84,42 +72,32 @@ module isa_coprocessador (
                         end
                     end
 
-                    // =========================
-                    // STORE B (endereço direto)
-                    // =========================
+                    // STORE B
                     4'h3: begin
                         bias_addr <= addr_in[6:0];
                         data_to_mem   <= data_in;
                         wren_bias     <= 1'b1;
                     end
-
-                    // =========================
-                    // STORE BETA (endereço direto)
-                    // =========================
+					
+                    // STORE BETA
                     4'h4: begin
 								 beta_addr <= addr_in[10:0];
 								 data_to_mem   <= data_in;
 								 wren_beta     <= 1'b1;
                     end
 
-                    // =========================
                     // START (somente se não estiver ocupado)
-                    // =========================
                     4'h5: begin
                         if (!fsm_busy)
                             start_pulse <= 1'b1;
                     end
 
-                    // =========================
                     // RESET DOS CONTADORES
-                    // =========================
                     4'h7: begin
                         count_w    <= 0;
                     end
-
-                    // =========================
+					
                     // DEFAULT
-                    // =========================
                     default: begin
                         // nenhuma ação
                     end
@@ -129,9 +107,7 @@ module isa_coprocessador (
         end
     end
 
-    // =========================
     // STATUS (leitura pelo HPS)
-    // =========================
     // [0] busy
     // [1] done
     // [2] error
