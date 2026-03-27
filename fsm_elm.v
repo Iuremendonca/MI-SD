@@ -28,11 +28,13 @@ module fsm_elm (
 	 
 	 reg foi_ultimo;
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            foi_ultimo <= 1'b0;
-        else if (estado == CALC_OCULTO && ativacao)
-            foi_ultimo <= ultimo_neuronio; // captura enquanto contador ainda está ativo, estava travando
-    end
+    if (!rst_n) 
+        foi_ultimo <= 1'b0;
+    else if (ultimo_neuronio) 
+        foi_ultimo <= 1'b1; // Captura o pulso e "trava" em 1
+    else if (estado == CALC_SAIDA) 
+        foi_ultimo <= 1'b0; // Destrava quando mudar de fase
+end
 
     //ontrola estados
     always @(*) begin
@@ -41,7 +43,7 @@ module fsm_elm (
         case (estado)
             REPOUSO: begin
                 if (start)              
-                    proximo_estado = CALC_OCULTO;
+                    proximo_estado = CALC_OCULTO; 
             end
 
             CALC_OCULTO: begin
