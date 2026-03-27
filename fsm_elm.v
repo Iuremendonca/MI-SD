@@ -4,10 +4,10 @@ module fsm_elm (
     input  wire        start,           
     input  wire        ultimo_neuronio,
     input  wire        ativacao,
-    input  wire        ultimo_argmax,
+	 input wire         ativacao_concluida,
+	 output reg        pronto,
     output reg         calcular,
     output reg         calcula_saida,
-    output reg         pronto,
     output reg  [2:0]  estado
 );
 
@@ -25,6 +25,14 @@ module fsm_elm (
         else        
             estado <= proximo_estado;
     end
+	 
+	 reg foi_ultimo;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            foi_ultimo <= 1'b0;
+        else if (estado == CALC_OCULTO && ativacao)
+            foi_ultimo <= ultimo_neuronio; // captura enquanto contador ainda está ativo, estava travando
+    end
 
     //ontrola estados
     always @(*) begin
@@ -32,7 +40,7 @@ module fsm_elm (
 
         case (estado)
             REPOUSO: begin
-                if (!start)              
+                if (start)              
                     proximo_estado = CALC_OCULTO;
             end
 
@@ -42,14 +50,14 @@ module fsm_elm (
             end
 
             ATIVACAO: begin
-                if (!ativacao) begin
-                    if (ultimo_neuronio) proximo_estado = CALC_SAIDA;
+                if (ativacao_concluida) begin
+                    if (foi_ultimo) proximo_estado = CALC_SAIDA;
                     else                 proximo_estado = CALC_OCULTO;
                 end
             end
 
             CALC_SAIDA: begin
-                if (ultimo_argmax)
+                if (ultimo_neuronio)
                     proximo_estado = FIM;
             end
 
