@@ -1,8 +1,48 @@
 module ondeamagicaacontece_ounao (
-    input  wire        clk, rst_n, start,
-    input  [2:0]       estado,
+    input  wire        clk, rst_n,
+    // --- INTERFACE COM O HPS (ARM) ---
+    input  wire [31:0] instrucao,
+    input  wire        hps_write,
+    output wire [31:0] hps_readdata,
+    // ---------------------------------
+    input  [2:0]       estado, // Mantido conforme original
     output [3:0]       saida 
 );
+
+    // --- FIOS PARA CONEXÃO INTERNA DA ISA ---
+    wire        w_start_pulse;
+    wire [16:0] w_load_w_addr;
+    wire [9:0]  w_load_img_addr;
+    wire [6:0]  w_load_bias_addr;
+    wire [10:0] w_load_beta_addr;
+    wire [15:0] w_load_data;
+    wire        w_wren_w, w_wren_img, w_wren_bias, w_wren_beta;
+    wire        w_busy = (westado != 3'd0); // Status de ocupado
+
+    // ============================================================
+    // INSTÂNCIA DA ISA
+    // ============================================================
+    isa_coprocessador isa_inst (
+        .clk          (clk),
+        .rst          (~rst_n),
+        .instrucao    (instrucao),
+        .hps_write    (hps_write),
+        .hps_readdata (hps_readdata),
+        .fsm_busy     (w_busy),
+        .fsm_done     (wpronto),
+        .fsm_error    (1'b0),
+        .elm_result   (saida),
+        .start_pulse  (w_start_pulse),
+        .w_addr       (w_load_w_addr),
+        .img_addr     (w_load_img_addr),
+        .bias_addr    (w_load_bias_addr),
+        .beta_addr    (w_load_beta_addr),
+        .data_to_mem  (w_load_data),
+        .wren_w       (w_wren_w),
+        .wren_img     (w_wren_img),
+        .wren_bias    (w_wren_bias),
+        .wren_beta    (w_wren_beta)
+    );
 
     // --- DECLARAÇÕES DE FIOS ---
     wire wfim_camada;
@@ -64,19 +104,22 @@ module ondeamagicaacontece_ounao (
 
     // --- INSTANCIAÇÕES ---
 
-    // Instância da nova ROM
-    rom_beta beta_inst (
-        .address (ww_addr[10:0]), // O endereço de Beta é menor (1280 posições)
-        .clock   (clk),
-        .rden    (westado == 3'd3),
-        .q       (wbeta_data)
+    // Instância da nova ROM (RAM 2-Port corrigida)
+    ram_beta beta_inst (
+        .clock     (clk),
+        .data      (w_load_data),      // Lado Escrita (ISA)
+        .wraddress (w_load_beta_addr), // Lado Escrita (ISA)
+        .wren      (w_wren_beta),      // Lado Escrita (ISA)
+        .rdaddress (ww_addr[10:0]),    // Lado Leitura (FSM)
+        .rden      (westado == 3'd3),  // Lado Leitura (FSM)
+        .q         (wbeta_data)        // Lado Leitura (FSM)
     );
 
     // FSM
     fsm_elm fsm_inst (
         .clk                (clk),
         .rst_n              (rst_n),
-        .start              (start),
+        .start              (w_start_pulse), 
         .ultimo_neuronio    (wfim_camada),
         .ativacao           (wativacao_valida),
         .ativacao_concluida (wativacao_concluida),
@@ -100,49 +143,58 @@ module ondeamagicaacontece_ounao (
         .neuronio      (windice_classe)
     );
 
-    // ROM Pesos 
-    rom_pesos rom_pesos_inst (
-        .address (ww_addr),
-        .clock   (clk),
-        .rden    (1'b1),
-        .q       (wpeso_data)
+    // ROM Pesos (RAM 2-Port corrigida)
+    ram_pesos weights_inst (
+        .clock     (clk),
+        .data      (w_load_data),      // Lado Escrita (ISA)
+        .wraddress (w_load_w_addr),    // Lado Escrita (ISA)
+        .wren      (w_wren_w),         // Lado Escrita (ISA)
+        .rdaddress (ww_addr),          // Lado Leitura (FSM)
+        .rden      (1'b1),             // Lado Leitura (Sempre lendo)
+        .q         (w_peso_data)       // Lado Leitura (FSM)
     );
 
-    // ROM Bias  
-    rom_bias bias_inst (
-        .address (wbias_addr),
-        .clock   (clk),
-        .rden    (westado == 3'd1 ? 1'b1:1'b0),
-        .q       (wbias_data)
+    // ROM Bias (RAM 2-Port corrigida)
+    ram_bias bias_inst (
+        .clock     (clk),
+        .data      (w_load_data),      // Lado Escrita (ISA)
+        .wraddress (w_load_bias_addr), // Lado Escrita (ISA)
+        .wren      (w_wren_bias),      // Lado Escrita (ISA)
+        .rdaddress (wbias_addr),       // Lado Leitura (FSM)
+        .rden      (westado == 3'd1),  // Lado Leitura (FSM)
+        .q         (wbias_data)        // Lado Leitura (FSM)
     );
 
-    // RAM Imagem  
+    // RAM Imagem (RAM 2-Port corrigida)
     ram_imagem imagem_inst (
-        .address (wx_addr),
-        .clock   (clk),
-        .data    (16'b0),   
-        .rden    (1'b1),
-        .wren    (1'b0),
-        .q       (wpixel_data)
+        .clock     (clk),
+        .data      (w_load_data),      // Lado Escrita (ISA)
+        .wraddress (w_load_img_addr),  // Lado Escrita (ISA)
+        .wren      (w_wren_img),       // Lado Escrita (ISA)
+        .rdaddress (wx_addr),          // Lado Leitura (FSM)
+        .rden      (1'b1),             // Lado Leitura (Sempre lendo)
+        .q         (wpixel_data)       // Lado Leitura (FSM)
     );
 
+    // RAM de Neurônios Ativos (Mantida conforme sua lógica de Single-Port/Pseudo Dual)
+    // Se esta memória também for Dual-Port do IP Catalog, use o padrão acima.
     ram_neuronios_ativos neuronio_ram_inst (
-        .address (westado == 3'd1 ? wativacao_waddr  // escrita: índice do neurônio oculto
-                                  : wneuronio_addr), // leitura: índice do neurônio de saída
         .clock   (clk),
-        .data    (wativacao_dout),  // dado vindo do sigmoid
-        .rden    (westado == 3'd3), // lê só na camada de saída
-        .wren    (wativacao_wren),  // escreve só na camada oculta
-        .q       (wativacao_data)   //  mac na camada de saída
+        .data    (wativacao_dout),  
+		  .wraddress (wativacao_waddr), // escrita: índice do neurônio oculto
+        .wren    (wativacao_wren),  
+		  .rdaddress (wneuronio_addr), // leitura: índice do neurônio de saída
+		  .rden    (westado == 3'd3),
+        .q       (wativacao_data)   
     );
 
     // Ativação Sigmoid
     ativacao_sigmoid sigmoid_inst (
-           .clk           (clk),
+        .clk           (clk),
         .rst_n         (rst_n),
         .d_in               (wsomabruta),
         .ativacao           (wativacao_valida),
-        .d_out              (wativacao_dout),       // am neurônios ativos
+        .d_out              (wativacao_dout),       
         .ativacao_concluida (wativacao_concluida)
     );
 
@@ -153,7 +205,7 @@ module ondeamagicaacontece_ounao (
         .dado_valido  (wdado_val),
         .fim_neuronio (wfim_pixel),
         .pixel        (wentrada_mac), 
-        .peso         (wpeso_final),  // <-- Agora usa o peso correto por estado
+        .peso         (wpeso_final),  
         .bias         (westado == 3'd1 ? wbias_data : 16'b0), 
         .saida        (wsaida_mac),
         .saida_valida (wativacao_valida)
