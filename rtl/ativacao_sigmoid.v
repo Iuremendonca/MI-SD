@@ -3,7 +3,8 @@ module ativacao_sigmoid (
     input  wire        rst_n,
     input  wire [15:0] d_in,
     input  wire        ativacao,
-    output wire signed [15:0] d_out
+    output wire signed [15:0] d_out,
+    output reg  [6:0]  addr_out
 );
     localparam V_0_5     = 16'h0800;
     localparam V_0_625   = 16'h0a00;
@@ -20,16 +21,24 @@ module ativacao_sigmoid (
     always @(*) begin
         e_negativo     = d_in[15];
         valor_absoluto = e_negativo ? (~d_in + 1'b1) : d_in;
-
         d_out_comb = V_1_0;
         if      (valor_absoluto < LIMIT_1_0) d_out_comb = (valor_absoluto >> 2) + V_0_5;
         else if (valor_absoluto < LIMIT_2_5) d_out_comb = (valor_absoluto >> 3) + V_0_625;
         else if (valor_absoluto < LIMIT_4_5) d_out_comb = (valor_absoluto >> 5) + V_0859375;
         else                                 d_out_comb = V_1_0;
-
         if (e_negativo) d_out_comb = V_1_0 - d_out_comb;
     end
 
     assign d_out = ativacao ? d_out_comb : 16'b0;
+
+    // ---------------------------------------------------------------
+    // Contador de endereço
+    // ---------------------------------------------------------------
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            addr_out <= 7'd0;
+        else if (ativacao)
+            addr_out <= addr_out + 7'd1;
+    end
 
 endmodule
