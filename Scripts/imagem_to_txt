@@ -1,0 +1,43 @@
+from PIL import Image
+import os
+
+def converter_imagem_para_txt(caminho_imagem, caminho_saida):
+    try:
+        # Abre a imagem
+        img = Image.open(caminho_imagem)
+        
+        # Converte para escala de cinza (8-bit) por segurança, caso a imagem original seja RGB
+        img = img.convert('L')
+        
+        # Garante que a imagem está no tamanho correto de 28x28
+        if img.size != (28, 28):
+            print(f"Aviso: Redimensionando imagem de {img.size} para 28x28.")
+            img = img.resize((28, 28))
+            
+        # Pega os dados dos pixels (retorna uma lista de valores de 0 a 255)
+        pixels = list(img.getdata())
+        
+        # Salva no formato esperado pelo $readmemh do Verilog
+        with open(caminho_saida, 'w') as f:
+            for pixel in pixels:
+                # Formata o valor em hexadecimal com 2 dígitos (ex: 255 vira FF)
+                # O \n garante que cada pixel fique em uma nova linha
+                f.write(f"{pixel:02X}\n")
+                
+        print(f"Sucesso! Arquivo '{caminho_saida}' gerado com {len(pixels)} valores hexadecimais.")
+        
+    except FileNotFoundError:
+        print(f"Erro: A imagem '{caminho_imagem}' não foi encontrada.")
+    except Exception as e:
+        print(f"Ocorreu um erro inesperado: {e}")
+
+# ==========================================
+# Execução do Script
+# ==========================================
+if __name__ == "__main__":
+    # Substitua pelos nomes reais dos seus arquivos
+    arquivo_entrada = "7.png" 
+    arquivo_saida   = "9_7.txt"
+    
+    # Executa a conversão
+    converter_imagem_para_txt(arquivo_entrada, arquivo_saida)
