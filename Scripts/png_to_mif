@@ -1,0 +1,57 @@
+from PIL import Image
+import os
+import argparse
+
+def converter_png_para_mif(caminho_imagem, caminho_saida, depth=784, width=8):
+    try:
+        # Abre a imagem e converte para escala de cinza
+        img = Image.open(caminho_imagem).convert('L')
+        
+        # Garante a resolução correta baseada no depth (ex: 784 = 28x28)
+        resolucao = int(depth ** 0.5)
+        if img.size != (resolucao, resolucao):
+            print(f"[AVISO] Redimensionando imagem de {img.size} para {resolucao}x{resolucao}.")
+            img = img.resize((resolucao, resolucao))
+            
+        pixels = list(img.getdata())
+        
+        # Gera o arquivo .mif
+        with open(caminho_saida, 'w') as f:
+            f.write(f"DEPTH = {depth};\n")
+            f.write(f"WIDTH = {width};\n")
+            f.write("ADDRESS_RADIX = DEC;\n")  # Endereços em Decimal
+            f.write("DATA_RADIX = HEX;\n")     # Dados da imagem em Hexadecimal
+            f.write("CONTENT\nBEGIN\n")
+            
+            for addr, pixel in enumerate(pixels):
+                if addr >= depth:
+                    break
+                # Escreve: Endereço (Decimal) : Pixel (Hexadecimal de 2 dígitos)
+                f.write(f"{addr} : {pixel:02X};\n")
+                
+            # Preenche o resto com zeros se a imagem for menor que a memória
+            if len(pixels) < depth:
+                inicio = len(pixels)
+                fim = depth - 1
+                if inicio == fim:
+                    f.write(f"{inicio} : 00;\n")
+                else:
+                    f.write(f"[{inicio}..{fim}] : 00;\n")
+                    
+            f.write("END;\n")
+            
+        print(f"[OK] Arquivo .mif '{caminho_saida}' gerado com sucesso!")
+        
+    except FileNotFoundError:
+        print(f"[ERRO] A imagem '{caminho_imagem}' não foi encontrada.")
+    except Exception as e:
+        print(f"[ERRO] Falha inesperada: {e}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Converte PNG para arquivo .mif (Endereços em Decimal)")
+    parser.add_argument("entrada", help="Nome da imagem PNG de entrada (Ex: imagem.png)")
+    parser.add_argument("saida", help="Nome do arquivo .mif de saída (Ex: imagem.mif)")
+    parser.add_argument("--depth", type=int, default=784, help="Profundidade da memória (padrão: 784)")
+    
+    args = parser.parse_args()
+    converter_png_para_mif(args.entrada, args.saida, args.depth)
