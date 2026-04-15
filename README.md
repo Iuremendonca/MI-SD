@@ -1,15 +1,21 @@
-# ELM Acelerador — TEC 499 MI Sistemas Digitais 2026.1
+# 🧠 ELM Acelerador — TEC 499 MI Sistemas Digitais 2026.1
 
-> **Marco 1 — Co-processador ELM em FPGA + Simulação**  
-> Universidade Estadual de Feira de Santana · Departamento de Tecnologia 
+> **Marco 1 — Co-processador ELM em FPGA + Simulação**
+> Universidade Estadual de Feira de Santana · Departamento de Tecnologia
+
+<div align="center">
 
 [![Simulation](https://img.shields.io/badge/simulação-Icarus%20Verilog-blue)](#simulação)
 [![Target](https://img.shields.io/badge/alvo-DE1--SoC%20(Cyclone%20V)-orange)](#hardware)
 [![Format](https://img.shields.io/badge/ponto%20fixo-Q4.12-green)](#formato-numérico)
+[![License](https://img.shields.io/badge/disciplina-TEC%20499-purple)](#)
+[![UEFS](https://img.shields.io/badge/UEFS-DEXA-red)](#)
+
+</div>
 
 ---
 
-## Sumário
+## 📋 Sumário
 
 1. [Visão Geral do Projeto](#1-visão-geral-do-projeto)
 2. [Levantamento de Requisitos](#2-levantamento-de-requisitos)
@@ -27,47 +33,66 @@
 14. [Equipe](#14-equipe)
 15. [Referências](#15-referências)
 
+
 ---
 
 ## 1. Visão Geral do Projeto
 
-Este repositório contém a implementação RTL (Register-Transfer Level) em **Verilog** de um co-processador dedicado à inferência de dígitos manuscritos (0–9) utilizando uma **Extreme Learning Machine (ELM)** sobre a plataforma **DE1-SoC** (Intel Cyclone V SoC).
+Este repositório contém a implementação RTL (Register-Transfer Level) em **Verilog** de um co-processador dedicado à inferência de dígitos manuscritos (0–9) utilizando uma **Extreme Learning Machine (ELM)** [[3]](#15-referências) sobre a plataforma **DE1-SoC** (Intel Cyclone V SoC) [[1]](#15-referências).
 
 O sistema classifica imagens 28×28 pixels (MNIST) em escala de cinza, executando os seguintes estágios sequenciais:
 
- <img width="665" height="294" alt="image" src="https://github.com/user-attachments/assets/206e8c31-1b12-4c8d-b218-a92a96730bfc" />
+<img width="665" height="294" alt="image" src="https://github.com/user-attachments/assets/206e8c31-1b12-4c8d-b218-a92a96730bfc" />
+
+---
 
 ### 1.1 Entrada de Dados
+
 O processo inicia com a leitura do vetor de entrada que representa a imagem.
+
 * **Tamanho:** 784 bytes (ex: matriz $28 \times 28$).
 * **Ação:** Os dados são carregados para a memória interna do acelerador.
 
+---
+
 ### 1.2 Camada Oculta (Hidden Layer)
-Processamento da transformação não-linear dos dados de entrada.
+
+Processamento da transformação não-linear dos dados de entrada [[3]](#15-referências)[[4]](#15-referências).
+
 * **Equação:** $$h = \sigma(W_n \cdot x + b)$$
-* **Onde:** * $W_n$: Matriz de pesos.
+* **Onde:**
+  * $W_n$: Matriz de pesos.
   * $b$: Vetor de bias.
   * $\sigma$: Função de ativação.
 
+---
+
 ### 1.3 Camada de Saída (Output Layer)
-Cálculo da combinação linear dos neurônios ocultos com os pesos de saída.
+
+Cálculo da combinação linear dos neurônios ocultos com os pesos de saída [[3]](#15-referências).
+
 * **Equação:** $$y = \beta \cdot h$$
-* **Onde:** * $\beta$: Matriz de pesos de saída (obtida no pré-treino).
+* **Onde:**
+  * $\beta$: Matriz de pesos de saída (obtida no pré-treino).
+
+---
 
 ### 1.4 Cômputo da Predição
+
 Fase final onde a rede decide qual classe o dado pertence.
+
 * **Lógica:** $$\text{pred} = \text{argmax}(y)$$
 * **Resultado:** O sistema retorna um valor no intervalo **0..9**, indicando o dígito identificado.
 
 ---
 
-
 **Parâmetros do modelo:**
+
 | Parâmetro | Dimensão | Memória |
 |-----------|----------|---------|
 | W (pesos oculta) | 128 × 784 | ~200 KB (Q4.12) |
-| b (bias oculta)  | 128 × 1   | 256 B |
-| β (pesos saída)  | 10 × 128  | ~2,5 KB (Q4.12) |
+| b (bias oculta) | 128 × 1 | 256 B |
+| β (pesos saída) | 10 × 128 | ~2,5 KB (Q4.12) |
 
 ---
 
@@ -108,11 +133,15 @@ Fase final onde a rede decide qual classe o dado pertence.
 ## 3. Arquitetura do Hardware
 
 ### 3.1 Diagrama de Blocos (Datapath + FSM)
-<img width="1024" height="984" alt="image" src="https://github.com/user-attachments/assets/976dae7d-c943-4f35-b241-67b7b1624aab" />     
+
+A arquitetura segue os princípios de co-processadores para aceleração de redes neurais em FPGA [[2]](#15-referências)[[7]](#15-referências).
+
+<img width="512" height="492" alt="image" src="https://github.com/user-attachments/assets/976dae7d-c943-4f35-b241-67b7b1624aab" />
 
 ### 3.2 Estados da FSM
 
-<img width="838" height="1024" alt="image" src="https://github.com/user-attachments/assets/63d76b3d-a681-4fe9-89ca-9a10e4b5651c" />
+<img width="419" height="512" alt="image" src="https://github.com/user-attachments/assets/63d76b3d-a681-4fe9-89ca-9a10e4b5651c" />
+
 ---
 
 ## 4. Formato Numérico Q4.12
@@ -166,6 +195,7 @@ else saida <= resultado [15:0];
 | `decodificador_7seg.v` | `decodificador_7seg` | Converte a predição para os displays de 7 segmentos da DE1-SoC. |
 | `instrucoes.v` | `instrucoes` | Interface para mapear chaves e botões físicos em instruções ISA. |
 
+---
 
 ### 5.1 Otimização da Função de Ativação (Sigmoid Piecewise Linear)
 
@@ -181,7 +211,7 @@ Para garantir a eficiência do acelerador na FPGA e evitar o uso de multiplicado
 | $\ge 4.5$ | $f(x) = 1.0$ (Saturação) | `16'h1000` |
 
 > [!TIP]
-> De acordo com **Oliveira (2017)**, essa abordagem minimiza o uso de elementos lógicos e blocos de DSP, permitindo que o sistema atinja maiores frequências de operação ($F_{max}$) ao reduzir o caminho crítico do datapath.
+> De acordo com **Oliveira (2017)** [[7]](#15-referências), essa abordagem minimiza o uso de elementos lógicos e blocos de DSP, permitindo que o sistema atinja maiores frequências de operação ($F_{max}$) ao reduzir o caminho crítico do datapath. O trabalho completo está disponível em: https://repositorio.unifei.edu.br/xmlui/handle/123456789/861
 
 #### Comparativo entre curva da função original e a aproximação
 
@@ -232,18 +262,16 @@ A ISA utiliza palavras de 32 bits com o seguinte formato:
 
 ## 7. Uso de Recursos FPGA
 
-> Dados obtidos após síntese no Quartus Prime Lite para **Cyclone V — 5CSEMA5F31C6**.
+> Dados obtidos após síntese no Quartus Prime Lite [[5]](#15-referências) para **Cyclone V — 5CSEMA5F31C6** [[1]](#15-referências).
 
 | Recurso | Utilizado | Disponível | % |
 |---------|-----------|------------|---|
 | ALMs (LUTs) | 655 | 32.070 | 2% |
 | Registradores | 691 | 128.280 | 0,005% |
-|Pins| 67 | 457 | 15% |
+| Pins | 67 | 457 | 15% |
 | DSP Blocks (18×18) | 2 | 87 | 2% |
 | M10K (BRAM) | 203 | 397 | 51% |
 | PLLs | 0 | 6 | 0% |
-
-
 
 **Estimativa de memória (BRAMs M10K):**
 
@@ -263,7 +291,7 @@ A ISA utiliza palavras de 32 bits com o seguinte formato:
 
 | Item | Especificação |
 |------|--------------|
-| Placa FPGA | Terasic DE1-SoC |
+| Placa FPGA | Terasic DE1-SoC [[1]](#15-referências) |
 | FPGA | Intel Cyclone V SoC — 5CSEMA5F31C6 |
 | HPS | ARM Cortex-A9 Dual-Core, 800 MHz |
 | Memória HPS | 1 GB DDR3 |
@@ -273,9 +301,9 @@ A ISA utiliza palavras de 32 bits com o seguinte formato:
 
 | Ferramenta | Versão | Uso |
 |------------|--------|-----|
-| Quartus Prime Lite | 21.1 | Síntese e place & route |
+| Quartus Prime Lite [[5]](#15-referências) | 21.1 | Síntese e place & route |
 | ModelSim-Intel | 10.5b | Simulação RTL |
-| Icarus Verilog | 11.0 | Verificação saída esperada |
+| Icarus Verilog [[6]](#15-referências) | 11.0 | Verificação saída esperada |
 | GTKWave | 3.3.x | Visualização de formas de onda |
 | Python | 3.10+ | Scripts de geração de vetores de teste e MIF |
 | NumPy | 1.24+ | Golden model e geração de dados |
@@ -295,7 +323,7 @@ sudo apt install iverilog gtkwave python3 python3-pip git
 pip3 install numpy
 ```
 
-> Para síntese e programação da placa: **Quartus Prime Lite 21.1** (Windows ou Linux), disponível em [intel.com/content/www/us/en/software/programmable/quartus-prime](https://www.intel.com/content/www/us/en/software/programmable/quartus-prime/download.html).
+> Para síntese e programação da placa: **Quartus Prime Lite 21.1** [[5]](#15-referências) (Windows ou Linux), disponível em [intel.com/content/www/us/en/software/programmable/quartus-prime](https://www.intel.com/content/www/us/en/software/programmable/quartus-prime/download.html).
 
 ### 9.2 Clonar o repositório
 
@@ -320,7 +348,7 @@ Após clonar, a estrutura já estará pronta para uso:
 4. No ModelSim: adicionar os sinais de interesse e rodar
 ```
 
-**Icarus Verilog (linha de comando):**
+**Icarus Verilog [[6]](#15-referências) (linha de comando):**
 
 ```bash
 # Compilar todos os módulos RTL + testbench desejado
@@ -343,7 +371,7 @@ gtkwave simulation/dump.vcd &
 4. Tools → Programmer → selecionar elm_accel.sof → Start
 ```
 
-> Os arquivos MIF em `quartus/mif/` são carregados automaticamente pelo Quartus durante a compilação para inicializar as RAMs com os pesos do modelo.
+> Os arquivos MIF em `quartus/mif/` são carregados automaticamente pelo Quartus [[5]](#15-referências) durante a compilação para inicializar as RAMs com os pesos do modelo.
 
 ### 9.5 Testar com imagens
 
@@ -364,7 +392,7 @@ Esta seção descreve a trajetória real da equipe — as decisões tomadas, os 
 
 ### 10.1 Fase 1 — Entendimento do problema e elaboração dos diagramas
 
-O ponto de partida foi o estudo da teoria da ELM e a compreensão das etapas matemáticas envolvidas na inferência: produto matricial da camada oculta, aplicação da ativação não-linear e produto matricial da camada de saída. Antes de escrever qualquer linha de Verilog, a equipe elaborou diagramas de fluxo detalhando cada etapa de cálculo — o que permitiu mapear com clareza quais operações seriam necessárias, quais dados precisariam ser armazenados e em que ordem cada resultado dependia do anterior.
+O ponto de partida foi o estudo da teoria da ELM [[3]](#15-referências)[[4]](#15-referências) e a compreensão das etapas matemáticas envolvidas na inferência: produto matricial da camada oculta, aplicação da ativação não-linear e produto matricial da camada de saída. Antes de escrever qualquer linha de Verilog, a equipe elaborou diagramas de fluxo detalhando cada etapa de cálculo — o que permitiu mapear com clareza quais operações seriam necessárias, quais dados precisariam ser armazenados e em que ordem cada resultado dependia do anterior.
 
 Em retrospecto, percebeu-se que o foco inicial foi direcionado à **corretude da inferência** (os cálculos matemáticos em hardware) antes de consolidar a **arquitetura completa** (ISA, banco de registradores, interface HPS–FPGA). Embora esse caminho tenha gerado um aprendizado sólido sobre a operação do datapath, a ordem ideal seria definir primeiro a arquitetura e depois implementar a inferência dentro dela — lição incorporada nas iterações seguintes.
 
@@ -380,13 +408,13 @@ Os módulos foram testados na seguinte ordem:
 4. `camada_saida.v` — validação dos contadores e da sequência de endereçamento;
 5. `fsm_elm.v` — verificação das transições de estado e dos sinais de controle gerados.
 
-Cada módulo foi simulado com **testbenches individuais no Icarus Verilog** (via playground online) e também no **ModelSim do Quartus**, onde a visualização das formas de onda permitiu inspecionar ciclo a ciclo o comportamento dos sinais. As saídas foram sistematicamente comparadas com scripts Python que executavam a mesma operação em ponto flutuante de dupla precisão, servindo como golden reference.
+Cada módulo foi simulado com **testbenches individuais no Icarus Verilog** [[6]](#15-referências) (via playground online) e também no **ModelSim do Quartus** [[5]](#15-referências), onde a visualização das formas de onda permitiu inspecionar ciclo a ciclo o comportamento dos sinais. As saídas foram sistematicamente comparadas com scripts Python que executavam a mesma operação em ponto flutuante de dupla precisão, servindo como golden reference.
 
 ### 10.3 Fase 3 — Integração no top-level e sincronização de sinais
 
 Após a validação individual, os módulos foram integrados no top-level `ondeamagicaacontece.v`. Essa etapa revelou a principal dificuldade técnica do projeto: **a sincronização de sinais em presença de latência de acesso às RAMs**.
 
-As memórias inferidas pelo Quartus introduzem um ciclo de latência entre a apresentação do endereço e a disponibilização do dado na saída. Isso exigiu que vários sinais de controle fossem **atrasados por registros de pipeline** para garantir que os dados lidos de cada RAM chegassem ao MAC exatamente no ciclo correto — especialmente o sinal `dado_valido` e os pulsos `fim_neuronio` e `ultimo_neuronio`, cujo alinhamento temporal com os dados é crítico para a operação correta do acumulador.
+As memórias inferidas pelo Quartus [[5]](#15-referências) introduzem um ciclo de latência entre a apresentação do endereço e a disponibilização do dado na saída. Isso exigiu que vários sinais de controle fossem **atrasados por registros de pipeline** para garantir que os dados lidos de cada RAM chegassem ao MAC exatamente no ciclo correto — especialmente o sinal `dado_valido` e os pulsos `fim_neuronio` e `ultimo_neuronio`, cujo alinhamento temporal com os dados é crítico para a operação correta do acumulador.
 
 A depuração foi realizada em camadas: primeiro validando a camada oculta isoladamente (comparando `h_saida` ciclo a ciclo com o Python), depois a camada de saída. Em ambos os casos, os resultados intermediários do hardware coincidiam com os do modelo de referência.
 
@@ -415,7 +443,7 @@ A correção foi feita no script `gen_mif.py`: a matriz β passou a ser transpos
 
 ### 10.5 Fase 5 — Integração da ISA e testes na placa
 
-Com a inferência validada por simulação, a ISA e o decodificador de instruções (desenvolvidos em paralelo) foram acoplados ao datapath no módulo `ondeamagicaacontece.v`. Os testes finais foram realizados **diretamente na placa DE1-SoC**, verificando que:
+Com a inferência validada por simulação, a ISA e o decodificador de instruções (desenvolvidos em paralelo) foram acoplados ao datapath no módulo `ondeamagicaacontece.v`. Os testes finais foram realizados **diretamente na placa DE1-SoC** [[1]](#15-referências), verificando que:
 
 - A validação individual de cada módulo foi preservada após a integração completa;
 - A validação da inferência por simulação se manteve no hardware real;
@@ -427,7 +455,7 @@ Com a inferência validada por simulação, a ISA e o decodificador de instruç�
 
 ### 11.1 Estratégia de Verificação
 
-A estratégia de verificação baseou-se na simulação funcional e temporal em múltiplos níveis, com comparação sistemática dos resultados contra um **Golden Model** em Python. As ferramentas utilizadas foram o **ModelSim** para análises complexas de integração e o **EDA Playground** para validações rápidas de módulos individuais.
+A estratégia de verificação baseou-se na simulação funcional e temporal em múltiplos níveis, com comparação sistemática dos resultados contra um **Golden Model** em Python. As ferramentas utilizadas foram o **ModelSim** [[5]](#15-referências) para análises complexas de integração e o **EDA Playground** para validações rápidas de módulos individuais.
 
 Os arquivos de teste estão localizados na pasta `/testbenchs` e seguem o padrão de nomenclatura `tb_nome_do_modulo.v` para testes de modulos individuais e `tb_camada_nome.v` para testes de integrações.
 
@@ -436,23 +464,25 @@ Os arquivos de teste estão localizados na pasta `/testbenchs` e seguem o padrã
 ### 11.2 Plataformas de Teste e Passo a Passo
 
 #### A. EDA Playground (Testes Individuais de Módulos)
+
 Utilizado para validação unitária de componentes lógicos (MAC, Sigmoid, Argmax) devido à agilidade de execução via web.
 
-1.  Acesse o [EDA Playground](https://www.edaplayground.com/).
-2.  Faça o upload do arquivo do módulo (ex: `mac.v`) e seu respectivo testbench localizado em `/testbenchs/tb_mac.v`.
-3.  Selecione o simulador **Icarus Verilog** ou **Questa Sim**.
-4.  Marque a opção "Open EPWave after run" para visualizar os sinais.
-5.  Clique em **Run** para validar a lógica aritmética e de estados.
+1. Acesse o [EDA Playground](https://www.edaplayground.com/).
+2. Faça o upload do arquivo do módulo (ex: `mac.v`) e seu respectivo testbench localizado em `/testbenchs/tb_mac.v`.
+3. Selecione o simulador **Icarus Verilog** [[6]](#15-referências) ou **Questa Sim**.
+4. Marque a opção "Open EPWave after run" para visualizar os sinais.
+5. Clique em **Run** para validar a lógica aritmética e de estados.
 
 #### B. ModelSim (Integração, Acesso à Memória e Barramento)
+
 Plataforma principal para validar a integração entre dois ou mais módulos, fluxos de acesso às memórias RAM e avaliação detalhada de sinais temporais críticos.
 
-1.  Abra o **ModelSim** e crie um novo projeto (`File -> New -> Project`).
-2.  Adicione todos os arquivos `.v` da pasta `/rtl` e o testbench de integração desejado da pasta `/testbenchs` (ex: `tb_camada_oculta.v`).
-3.  Compile todos os arquivos (`Compile -> Compile All`).
-4.  Inicie a simulação (`Simulate -> Start Simulation`) e selecione o módulo de testbench na aba *Work*.
-5.  Adicione os sinais desejados à janela **Wave** (`Add Wave`).
-6.  Execute o comando `run -all` no console para processar o fluxo completo de dados e verificar a sincronização dos sinais `h_saida`, `y_saida` e os endereçamentos de memória.
+1. Abra o **ModelSim** e crie um novo projeto (`File -> New -> Project`).
+2. Adicione todos os arquivos `.v` da pasta `/rtl` e o testbench de integração desejado da pasta `/testbenchs` (ex: `tb_camada_oculta.v`).
+3. Compile todos os arquivos (`Compile -> Compile All`).
+4. Inicie a simulação (`Simulate -> Start Simulation`) e selecione o módulo de testbench na aba *Work*.
+5. Adicione os sinais desejados à janela **Wave** (`Add Wave`).
+6. Execute o comando `run -all` no console para processar o fluxo completo de dados e verificar a sincronização dos sinais `h_saida`, `y_saida` e os endereçamentos de memória.
 
 ---
 
@@ -471,13 +501,11 @@ Plataforma principal para validar a integração entre dois ou mais módulos, fl
 | TC-09 | Dois START consecutivos sem reset | ModelSim | ✅ Passou |
 | TC-10 | Validação na placa DE1-SoC | Hardware Real | ✅ Passou |
 
----
-
 ### 11.4 Automação via Terminal
 
-Para ambientes Linux/WSL, a execução pode ser automatizada via `Makefile`:
+Para ambientes Linux/WSL, a execução pode ser automatizada via `Makefile`.
 
-
+---
 
 ## 12. Análise dos Resultados
 
@@ -507,22 +535,24 @@ Para ambientes Linux/WSL, a execução pode ser automatizada via `Makefile`:
 ### 12.3 Principais dificuldades encontradas e como foram superadas
 
 **Sincronização de sinais com latência de RAM**
-As memórias inferidas pelo Quartus introduzem 1 ciclo de latência. A solução foi adicionar registros de pipeline para atrasar os sinais de controle (`dado_valido`, `fim_neuronio`, `ultimo_neuronio`) de forma que eles cheguem ao MAC no mesmo ciclo que os dados lidos da RAM.
+
+As memórias inferidas pelo Quartus [[5]](#15-referências) introduzem 1 ciclo de latência. A solução foi adicionar registros de pipeline para atrasar os sinais de controle (`dado_valido`, `fim_neuronio`, `ultimo_neuronio`) de forma que eles cheguem ao MAC no mesmo ciclo que os dados lidos da RAM.
 
 **Inferência incorreta com hardware e software errando para o mesmo valor**
+
 O fato de ambos errarem para a mesma classe foi o indício que levou a equipe a investigar a camada de dados em vez da aritmética. A causa foi a diferença de convenção de linearização entre W\_in e β: enquanto W\_in é armazenada linha a linha (neurônio por neurônio), a matriz β original tinha sua dimensão de classes nas colunas. O hardware endereçava β esperando os pesos de cada classe contíguos, mas a matriz estava transposta. A correção foi realizar a transposição de β no script de geração do MIF, antes de linearizar.
 
 **Integração da ISA ao datapath validado**
+
 O acoplamento da ISA introduziu multiplexadores nos barramentos de endereço das RAMs (selecionando entre o endereço gerado pela FSM durante inferência e o endereço gerado pela ISA durante escrita). A validação foi feita garantindo que os resultados obtidos na simulação prévia continuavam corretos após a integração.
 
 ### 12.4 Observações finais
 
-A ativação sigmoid piecewise linear introduz erro máximo de `±0.009` em relação ao sigmoid exato — dentro do tolerável para classificação de dígitos. O acumulador interno de 40 bits garante que não há overflow durante a fase de acumulação do MAC, com saturação aplicada apenas na saída para a faixa Q4.12. A validação em placa confirmou que o comportamento observado em simulação foi preservado no hardware real.
+A ativação sigmoid piecewise linear — cuja abordagem é fundamentada em **Oliveira (2017)** [[7]](#15-referências) — introduz erro máximo de `±0.009` em relação ao sigmoid exato, dentro do tolerável para classificação de dígitos. O acumulador interno de 40 bits garante que não há overflow durante a fase de acumulação do MAC, com saturação aplicada apenas na saída para a faixa Q4.12. A validação em placa confirmou que o comportamento observado em simulação foi preservado no hardware real, corroborando os resultados obtidos em trabalhos similares de aceleração de ELM em FPGA [[2]](#15-referências).
 
 ---
 
 ## 13. Estrutura do Repositório
-
 
 ```
 MI-SD/
@@ -551,9 +581,17 @@ MI-SD/
                                 ← Validação unitária de cada submódulo RTL
 ```
 
+---
 
+## 14. Equipe
 
-## 14. Referências
+> _Iure Rocha Moreira Mendonça._
+> _João Pedro da Silva Ferreira._
+> _Thaylane da Silva._
+
+---
+
+## 15. Referências
 
 1. **DE1-SoC User Manual** — Terasic Technologies. Disponível em: [fpgacademy.org](https://fpgacademy.org/boards.html)
 2. **Accelerating Extreme Learning Machine on FPGA** — UTHM Publisher. Disponível em: [publisher.uthm.edu.my](https://publisher.uthm.edu.my/ojs/index.php/ijie/article/view/4431)
@@ -561,5 +599,12 @@ MI-SD/
 4. **A máquina de aprendizado extremo (ELM)** — Computação Inteligente. Disponível em: [computacaointeligente.com.br](https://computacaointeligente.com.br/algoritmos/maquina-de-aprendizado-extremo/)
 5. **Intel Quartus Prime Lite Design Software** — versão 21.1.
 6. **Icarus Verilog** — versão 11.0. Disponível em: [iverilog.icarus.com](http://iverilog.icarus.com/)
-7. 
-OLIVEIRA, J. G. M. *Uma arquitetura reconfigurável de Rede Neural Artificial utilizando FPGA*. Dissertação (Mestrado) – UNIFEI, Itajubá, 2017.
+7. OLIVEIRA, J. G. M. *Uma arquitetura reconfigurável de Rede Neural Artificial utilizando FPGA*. Dissertação (Mestrado) – UNIFEI, Itajubá, 2017. Disponível em: [repositorio.unifei.edu.br/xmlui/handle/123456789/861](https://repositorio.unifei.edu.br/xmlui/handle/123456789/861)
+
+---
+
+<div align="center">
+
+*Universidade Estadual de Feira de Santana — UEFS · Departamento de Tecnologia · TEC 499 MI Sistemas Digitais 2026.1*
+
+</div>
