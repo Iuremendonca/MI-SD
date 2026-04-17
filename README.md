@@ -62,6 +62,7 @@ Processamento da transformação não-linear dos dados de entrada [[3]](#15-refe
 * **Equação:** $$h = \sigma(W_n \cdot x + b)$$
 * **Onde:**
   * $W_n$: Matriz de pesos.
+  * $x$: Pixel.
   * $b$: Vetor de bias.
   * $\sigma$: Função de ativação.
 
@@ -200,7 +201,8 @@ else saida <= resultado [15:0];
 
 ### 5.1 Otimização da Função de Ativação (Sigmoid Piecewise Linear)
 
-Para garantir a eficiência do acelerador na FPGA e evitar o uso de multiplicadores proprietários (blocos aritméticos integrados diretamente na arquitetura física de uma FPGA), a função de ativação foi implementada via aproximação linear por partes (**PWL**).
+Para garantir a eficiência do acelerador na FPGA e evitar o uso de multiplicadores proprietários (blocos aritméticos integrados diretamente na arquitetura física de uma FPGA), a função de ativação foi implementada via aproximação linear por partes (**PWL**), utilizando deslocamento de bits durante o processo. 
+Para entradas negativas, foi usada a seguinte relação y(-x) = 1-y(x).
 
 #### Aproximação da Função Sigmóide Logística
 
@@ -222,6 +224,17 @@ Para garantir a eficiência do acelerador na FPGA e evitar o uso de multiplicado
 
 ## 6. Mapa de Registradores / ISA
 
+### 6.1 Banco de registradores
+
+| Registrador | Largura | Acesso | Módulo | Reset | Descrição |
+|---|---|---|---|---|---|
+| `save_instrucao` | 32 bits | R/W | `decodificador_isa` | `32'b0` | Captura a instrução vinda do HPS a cada borda de subida do clock. Os campos `opcode[31:28]`, `addr_in[27:16]` e `data_in[15:0]` são extraídos diretamente deste registrador. |
+| `data_to_mem` | 16 bits | W | `decodificador_isa` | `16'b0` | Registra o campo de dado (`data_in[15:0]`) da instrução para escrita nas RAMs internas. Compartilhado por `ram_img`, `ram_pesos`, `ram_bias` e `ram_beta`, dependendo do opcode ativo. |
+| `temp_w_addr` | 17 bits | R/W | `decodificador_isa` | `17'b0` | Armazena o endereço de 17 bits para escrita na `ram_pesos`. Configurado pelo opcode `0x6` (STORE W ADDR) e utilizado na operação seguinte de opcode `0x2` (STORE W). Necessário pois o campo `addr_in` tem apenas 12 bits. |
+| `ciclo_count` | 32 bits | R | `decodificador_isa` | `32'b0` | Contador de ciclos de clock decorridos durante a inferência. Incrementado enquanto a FSM está em `CALC_OCULTO` ou `CALC_SAIDA`. Permite medir latência de execução via HPS. |
+| `hps_readdata` | 32 bits | R | `decodificador_isa` | `32'b0` | Dado de retorno ao HPS. Populado pelo opcode `0x0` (STATUS): `[7:4]` resultado argmax · `[2]` error · `[1]` fsm_done · `[0]` fsm_busy. |
+
+
 A ISA utiliza palavras de 32 bits com o seguinte formato:
 
 ```
@@ -232,7 +245,7 @@ A ISA utiliza palavras de 32 bits com o seguinte formato:
  └─────────┴──────────┴──────────┘
 ```
 
-### 6.1 Tabela de Opcodes
+### 6.2 Tabela de Opcodes
 
 | Instrução | Opcode | Descrição |
 |-----------|--------|-----------|
@@ -243,7 +256,7 @@ A ISA utiliza palavras de 32 bits com o seguinte formato:
 | `START` | `0x5` | Dispara pulso `start` para a FSM |
 | `STATUS` | `0x6` | Lê estado (`hps_readdata`): `[7:4]` = resultado, `[2:0]` = estado FSM |
 
-### 6.2 Saída STATUS (`hps_readdata`)
+### 6.3 Saída STATUS (`hps_readdata`)
 
 ```
  31       8   7    4   3    2    1    0
@@ -369,20 +382,27 @@ gtkwave simulation/dump.vcd &
 1. Abrir Quartus Prime Lite
 2. File → Open Project → quartus/<projeto>.qpf
 3. Processing → Start Compilation
-4. Tools → Programmer → selecionar elm_accel.sof → Start
+4. Tools → Programmer → selecionar pbl1.sof → Start
 ```
 
 > Os arquivos MIF em `quartus/mif/` são carregados automaticamente pelo Quartus [[5]](#15-referências) durante a compilação para inicializar as RAMs com os pesos do modelo.
 
-### 9.5 Testar com imagens
+### 9.5 Teste Python (elm_model)
+
+Para testar a inferência em python utilize o seguinte comando juntamente com os arquivos txt, disponiveis em `scripts/txt`.
 
 As imagens de teste disponíveis em `assets/images_png/` podem ser usadas diretamente com os scripts em `scripts/` para gerar vetores de simulação ou para validação na placa via a ISA do co-processador.
 
+O arquivo `label.txt` deve conter uma linha com o digito a ser inferido.
+
 ```bash
 # Exemplo: rodar golden model Python contra uma imagem
-python3 scripts/golden_model.py \
-    --imgs assets/images_png/ \
-    --out  simulation/golden_preds.mem
+ python elm_model.py \\
+        --weights weights.txt \\
+        --beta    beta.txt    \\
+        --bias    bias.txt    \\
+        --image   image.txt   \\
+        --label   label.txt
 ```
 
 ---
@@ -561,12 +581,12 @@ MI-SD/
 │                               ← Todos os módulos do co-processador ELM
 │
 ├── scripts/                    ← Scripts Python de suporte
-│                               ← Geração de MIF, golden model e vetores de teste
+│   ├── txt/                    ← Arquivos para uso nos testbenchs e elm_model.py 
 │
 ├── simulation/                 ← Artefatos de simulação (ModelSim / Icarus)
 │                               ← Testbenches, formas de onda e relatórios
 │
-└── testbenches/                ← Testbenches individuais por módulo
+└── testbenchs/                 ← Testbenches individuais por módulo
                                 ← Validação unitária de cada submódulo RTL
 ```
 
