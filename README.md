@@ -136,7 +136,8 @@ Fase final onde a rede decide qual classe o dado pertence.
 
 A arquitetura segue os princípios de co-processadores para aceleração de redes neurais em FPGA [[2]](#15-referências)[[7]](#15-referências).
 
-<img width="512" height="492" alt="image" src="https://github.com/user-attachments/assets/976dae7d-c943-4f35-b241-67b7b1624aab" />
+<img width="537" height="573" alt="image" src="https://github.com/user-attachments/assets/ab61af1a-7c5c-48e5-9792-d2739e9a1c1d" />
+
 
 ### 3.2 Estados da FSM
 
@@ -268,7 +269,7 @@ A ISA utiliza palavras de 32 bits com o seguinte formato:
 |---------|-----------|------------|---|
 | ALMs (LUTs) | 655 | 32.070 | 2% |
 | Registradores | 691 | 128.280 | 0,005% |
-| Pins | 67 | 457 | 15% |
+| Pins | 27 | 457 | 5,9% |
 | DSP Blocks (18×18) | 2 | 87 | 2% |
 | M10K (BRAM) | 203 | 397 | 51% |
 | PLLs | 0 | 6 | 0% |
@@ -509,19 +510,7 @@ Para ambientes Linux/WSL, a execução pode ser automatizada via `Makefile`.
 
 ## 12. Análise dos Resultados
 
-### 12.1 Acurácia
-
-| Métrica | Valor |
-|---------|-------|
-| Vetores testados | — |
-| Predições corretas | — |
-| Acurácia HW (%) | — |
-| Acurácia golden model float64 (%) | — |
-| Degradação por Q4.12 | — |
-
-> Preencher após execução com o conjunto de vetores fornecido pelo professor.
-
-### 12.2 Latência de Inferência
+### 12.1 Latência de Inferência
 
 | Etapa | Ciclos |
 |-------|--------|
@@ -532,7 +521,7 @@ Para ambientes Linux/WSL, a execução pode ser automatizada via `Makefile`.
 | **Total** | **~101.770 ciclos** |
 | **Latência @ 50 MHz** | **~2,03 ms por inferência** |
 
-### 12.3 Principais dificuldades encontradas e como foram superadas
+### 12.2 Principais dificuldades encontradas e como foram superadas
 
 **Sincronização de sinais com latência de RAM**
 
@@ -546,7 +535,7 @@ O fato de ambos errarem para a mesma classe foi o indício que levou a equipe a 
 
 O acoplamento da ISA introduziu multiplexadores nos barramentos de endereço das RAMs (selecionando entre o endereço gerado pela FSM durante inferência e o endereço gerado pela ISA durante escrita). A validação foi feita garantindo que os resultados obtidos na simulação prévia continuavam corretos após a integração.
 
-### 12.4 Observações finais
+### 12.3 Observações finais
 
 A ativação sigmoid piecewise linear — cuja abordagem é fundamentada em **Oliveira (2017)** [[7]](#15-referências) — introduz erro máximo de `±0.009` em relação ao sigmoid exato, dentro do tolerável para classificação de dígitos. O acumulador interno de 40 bits garante que não há overflow durante a fase de acumulação do MAC, com saturação aplicada apenas na saída para a faixa Q4.12. A validação em placa confirmou que o comportamento observado em simulação foi preservado no hardware real, corroborando os resultados obtidos em trabalhos similares de aceleração de ELM em FPGA [[2]](#15-referências).
 
