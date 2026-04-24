@@ -21,7 +21,7 @@ module decodificador_7seg(
 		end else begin
 			case(in)
 			// in = {0, error, done, busy}
-			4'b0000: seg_out = 7'b0110000; //I - Espera
+			4'b0000: seg_out = 7'b1001111; //I - Espera
 			4'b0001: seg_out = 7'b0000011; //b - Busy
 			4'b0010: seg_out = 7'b0100001; //d - Done
 			4'b0100: seg_out = 7'b0000110; //E - Error
