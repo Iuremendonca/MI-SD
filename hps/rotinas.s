@@ -24,40 +24,41 @@
 .type start_asm,       %function
 .type status_asm,      %function
 
-@ --- Constantes de Endereço (Offsets do Lightweight Bridge) ---
-.equ PIO_READ_OFFSET, 0x00
-.equ PIO_CTRL_OFFSET, 0x10
-.equ PIO_INST_OFFSET, 0x20
+@ --- Offsets dos registradores de I/O no Lightweight Bridge ---
+.equ PIO_READ_OFFSET, 0x00   @ leitura de status do hardware
+.equ PIO_CTRL_OFFSET, 0x10   @ controle de clock e reset
+.equ PIO_INST_OFFSET, 0x20   @ envio de instruções
 
-@ --- Bits do pio_hpswrite ---
-.equ CTRL_CLK_BIT,   2
-.equ CTRL_RESET_BIT, 1
+@ --- Bits de controle em pio_hpswrite ---
+.equ CTRL_CLK_BIT,   2       @ bit do clock manual
+.equ CTRL_RESET_BIT, 1       @ bit de reset
 
-@ --- Syscalls ---
+@ --- Códigos de syscall Linux (ARM) ---
 .equ SYS_OPEN,   5
 .equ SYS_MMAP2,  192
 .equ SYS_MUNMAP, 91
 .equ SYS_CLOSE,  6
 
-@ limites for
+@ --- Quantidade de elementos de cada dado do modelo ---
 .equ LIM_IMG,   784
 .equ LIM_W,  100352
 .equ LIM_BETA, 1280
 .equ LIM_BIAS,  128
 
-@ =================================================================
+ 
 @ Variáveis globais (BSS)
-@ =================================================================
 .section .bss
 .align 4
-hw_fd:   .space 4
-hw_base: .space 4
+hw_fd:   .space 4   @ file descriptor de /dev/mem
+hw_base: .space 4   @ endereço virtual mapeado do LW bridge
 
-@ =================================================================
-@ Macro: carrega hw_base e deriva os 3 ponteiros de registrador.
-@ Usa r8=base, r1=pio_instrucao, r2=pio_hpswrite, r12=pio_readdata.
-@ Salta para err_ret se hw não foi inicializado.
-@ =================================================================
+
+@ Macro setup_hw
+@ Carrega hw_base em r8 e deriva os três ponteiros de registrador:
+@   r1  = pio_instrucao  (envio de instruções)
+@   r2  = pio_hpswrite   (clock e reset)
+@   r12 = pio_readdata   (leitura de status)
+@ Se hw_base for zero (não inicializado), salta para err_ret.
 .macro setup_hw
     ldr     r8, =hw_base
     ldr     r8, [r8]
@@ -68,14 +69,15 @@ hw_base: .space 4
     add     r12, r8, #PIO_READ_OFFSET
 .endm
 
-@ =================================================================
-@ init_hw_asm — abre /dev/mem e mapeia o LW bridge.
+
+@ init_hw_asm — Inicializa o acesso ao hardware.
+@ Abre /dev/mem e mapeia o Lightweight Bridge (0xFF200000, 4 KB).
 @ Retorno: 0 = sucesso, -1 = falha.
-@ =================================================================
 .section .text
 init_hw_asm:
     push    {r4-r7, lr}
 
+    @ Abre /dev/mem com flags leitura/escrita + sincronizado
     ldr     r0, =dev_mem_path
     ldr     r1, =0x101002
     mov     r7, #SYS_OPEN
@@ -83,28 +85,33 @@ init_hw_asm:
     cmp     r0, #0
     blt     init_fail
 
+    @ Salva o file descriptor
     ldr     r1, =hw_fd
     str     r0, [r1]
     mov     r4, r0
 
-    mov     r0, #0
-    mov     r1, #0x1000
-    mov     r2, #3
-    mov     r3, #1
-    ldr     r5, =0xff200
+    @ Mapeia 4 KB a partir do endereço físico 0xFF200 (página)
+    mov     r0, #0           @ endereço virtual: kernel escolhe
+    mov     r1, #0x1000      @ tamanho: 4 KB
+    mov     r2, #3           @ proteção: PROT_READ | PROT_WRITE
+    mov     r3, #1           @ flags: MAP_SHARED
+    ldr     r5, =0xff200     @ endereço físico (em páginas para mmap2)
     mov     r7, #SYS_MMAP2
     svc     #0
 
+    @ Verifica erro (mmap retorna endereço próximo de -1 em falha)
     cmn     r0, #4096
     bhi     init_fail_close
 
+    @ Salva o ponteiro base mapeado
     ldr     r1, =hw_base
     str     r0, [r1]
 
-    mov     r0, #0
+    mov     r0, #0           @ retorna sucesso
     pop     {r4-r7, pc}
 
 init_fail_close:
+    @ Fecha o arquivo antes de retornar erro
     ldr     r0, =hw_fd
     ldr     r0, [r0]
     mov     r7, #SYS_CLOSE
@@ -113,36 +120,38 @@ init_fail:
     mov     r0, #-1
     pop     {r4-r7, pc}
 
-@ =================================================================
-@ exit_hw_asm — munmap + close.
-@ =================================================================
+
+@ exit_hw_asm — Libera os recursos do hardware.
+@ Desfaz o mmap e fecha /dev/mem. Seguro chamar várias vezes.
 exit_hw_asm:
     push    {r4-r7, lr}
 
     ldr     r4, =hw_base
     ldr     r0, [r4]
     cmp     r0, #0
-    beq     exit_done
+    beq     exit_done        @ já foi liberado, nada a fazer
 
+    @ Desfaz o mapeamento de memória
     mov     r1, #0x1000
     mov     r7, #SYS_MUNMAP
     svc     #0
     mov     r0, #0
-    str     r0, [r4]
+    str     r0, [r4]         @ zera hw_base
 
+    @ Fecha /dev/mem
     ldr     r4, =hw_fd
     ldr     r0, [r4]
     mov     r7, #SYS_CLOSE
     svc     #0
     mov     r0, #-1
-    str     r0, [r4]
+    str     r0, [r4]         @ marca fd como inválido
 
 exit_done:
     pop     {r4-r7, pc}
 
-@ =================================================================
-@ reset_hw_asm — pulso de reset no pio_hpswrite (bit 0).
-@ =================================================================
+
+@ reset_hw_asm — Reinicia a FSM do hardware.
+@ Aplica um pulso no bit de reset de pio_hpswrite.
 reset_hw_asm:
     push    {r0-r3, lr}
 
@@ -151,29 +160,24 @@ reset_hw_asm:
     add     r0, r0, #PIO_CTRL_OFFSET
 
     mov     r1, #CTRL_RESET_BIT
-    str     r1, [r0]
-
-    mov     r2, #150
-1:  subs    r2, r2, #1
-    bne     1b
+    str     r1, [r0]         @ ativa reset
 
     mov     r1, #0
-    str     r1, [r0]
+    str     r1, [r0]         @ libera reset
 
     pop     {r0-r3, pc}
 
-@ =================================================================
-@ carregar_img_asm — opcode 1, lê uint8 por elemento.
-@ Protótipo C: void carregar_img_asm(void *buffer, uint32_t limite)
+
+@ carregar_img_asm — Envia a imagem de entrada (opcode 1).
+@ Protótipo C: void carregar_img_asm(void *buffer)
 @
-@ Instrução por elemento i:
-@   [31:28] = 1  (IMG)
-@   [27:16] = i
-@   [15:0]  = pixel (uint8)
-@ =================================================================
+@ Envia 784 pixels (uint8). Formato da instrução por elemento i:
+@   [31:28] = 1  (opcode IMG)
+@   [27:16] = i  (índice)
+@   [15:0]  = pixel
 carregar_img_asm:
     push    {r4-r12, lr}
-    mov     r10, r0             @ buffer
+    mov     r10, r0             @ ponteiro para o buffer de pixels
     mov     r9,  #LIM_IMG
     mov     r5,  #0
     setup_hw
@@ -183,9 +187,10 @@ img_loop:
     cmp     r4, r9
     bge     proc_done
 
-    ldrb    r3, [r10], #1       @ lê 1 byte
+    ldrb    r3, [r10], #1       @ lê 1 byte (uint8) e avança ponteiro
 
-    mov     r7, #1              @ opcode IMG hardcoded
+    @ Monta instrução: opcode=1, índice=r4, valor=r3
+    mov     r7, #1
     lsl     r7, r7, #28
     orr     r7, r7, r4, lsl #16
     uxth    r3, r3
@@ -196,15 +201,14 @@ img_loop:
     add     r4, r4, #1
     b       img_loop
 
-@ =================================================================
-@ carregar_bias_asm — opcode 3, lê uint16 por elemento.
-@ Protótipo C: void carregar_bias_asm(void *buffer, uint32_t limite)
+
+@ carregar_bias_asm — Envia os bias da camada densa (opcode 3).
+@ Protótipo C: void carregar_bias_asm(void *buffer)
 @
-@ Instrução por elemento i:
-@   [31:28] = 3  (BIAS)
+@ Envia 128 valores (uint16). Formato da instrução por elemento i:
+@   [31:28] = 3  (opcode BIAS)
 @   [27:16] = i
-@   [15:0]  = valor (uint16)
-@ =================================================================
+@   [15:0]  = valor
 carregar_bias_asm:
     push    {r4-r12, lr}
     mov     r10, r0
@@ -217,9 +221,10 @@ bias_loop:
     cmp     r4, r9
     bge     proc_done
 
-    ldrh    r3, [r10], #2       @ lê 2 bytes
+    ldrh    r3, [r10], #2       @ lê 2 bytes (uint16) e avança ponteiro
 
-    mov     r7, #3              @ opcode BIAS hardcoded
+    @ Monta instrução: opcode=3, índice=r4, valor=r3
+    mov     r7, #3
     lsl     r7, r7, #28
     orr     r7, r7, r4, lsl #16
     uxth    r3, r3
@@ -230,15 +235,14 @@ bias_loop:
     add     r4, r4, #1
     b       bias_loop
 
-@ =================================================================
-@ carregar_beta_asm — opcode 4, lê uint16 por elemento.
-@ Protótipo C: void carregar_beta_asm(void *buffer, uint32_t limite)
+
+@ carregar_beta_asm — Envia os parâmetros beta (BatchNorm) (opcode 4).
+@ Protótipo C: void carregar_beta_asm(void *buffer)
 @
-@ Instrução por elemento i:
-@   [31:28] = 4  (BETA)
+@ Envia 1280 valores (uint16). Formato da instrução por elemento i:
+@   [31:28] = 4  (opcode BETA)
 @   [27:16] = i
-@   [15:0]  = valor (uint16)
-@ =================================================================
+@   [15:0]  = valor
 carregar_beta_asm:
     push    {r4-r12, lr}
     mov     r10, r0
@@ -251,9 +255,10 @@ beta_loop:
     cmp     r4, r9
     bge     proc_done
 
-    ldrh    r3, [r10], #2
+    ldrh    r3, [r10], #2       @ lê 2 bytes (uint16) e avança ponteiro
 
-    mov     r7, #4              @ opcode BETA hardcoded
+    @ Monta instrução: opcode=4, índice=r4, valor=r3
+    mov     r7, #4
     lsl     r7, r7, #28
     orr     r7, r7, r4, lsl #16
     uxth    r3, r3
@@ -264,14 +269,13 @@ beta_loop:
     add     r4, r4, #1
     b       beta_loop
 
-@ =================================================================
-@ carregar_w_asm — opcodes 6+2, protocolo 2 etapas, uint16.
-@ Protótipo C: void carregar_w_asm(void *buffer, uint32_t limite)
+
+@ carregar_w_asm — Envia os pesos da rede neural (opcodes 6 e 2).
+@ Protótipo C: void carregar_w_asm(void *buffer)
 @
-@ Por elemento i:
-@   Etapa 1: [31:28]=6, [16:0]=i & 0x1FFFF  (endereço)
-@   Etapa 2: [31:28]=2, [15:0]=valor         (dado)
-@ =================================================================
+@ Envia 100352 pesos (uint16) em duas etapas por elemento:
+@   Etapa 1 (endereço): opcode=6, [16:0] = índice & 0x1FFFF
+@   Etapa 2 (dado):     opcode=2, [15:0] = valor
 carregar_w_asm:
     push    {r4-r12, lr}
     mov     r10, r0
@@ -284,10 +288,10 @@ w_loop:
     cmp     r4, r9
     bge     proc_done
 
-    ldrh    r3, [r10], #2
+    ldrh    r3, [r10], #2       @ lê 2 bytes (uint16) e avança ponteiro
 
-    @ Etapa 1: endereço
-    mov     r7, #6              @ opcode W_ADDR hardcoded
+    @ Etapa 1: envia o endereço do peso
+    mov     r7, #6
     lsl     r7, r7, #28
     ldr     r6, =0x1FFFF
     and     r6, r4, r6
@@ -295,8 +299,8 @@ w_loop:
     str     r7, [r1]
     bl      pulse_hw
 
-    @ Etapa 2: dado
-    mov     r7, #2              @ opcode W hardcoded
+    @ Etapa 2: envia o valor do peso
+    mov     r7, #2
     lsl     r7, r7, #28
     uxth    r3, r3
     orr     r7, r7, r3
@@ -306,98 +310,97 @@ w_loop:
     add     r4, r4, #1
     b       w_loop
 
-@ =================================================================
-@ start_asm — opcode 5, dispara a FSM.
+
+@ start_asm — Dispara a inferência e aguarda o resultado (opcode 5).
 @ Protótipo C: void start_asm(void)
-@ =================================================================
+@ Inicia polling com a subida do bit busy
+@ E faz polling em status até o bit busy (bit 0) decer.
 start_asm:
     push    {r4-r12, lr}
     mov     r5, #0
     setup_hw
- 
-    @ Dispara a FSM: instrução com opcode 5
+
+    @ Envia instrução de início (opcode 5)
     mov     r7, #5
     lsl     r7, r7, #28
     str     r7, [r1]
     bl      pulse_hw
- 
-    @ Polling: lê status até bit 1 (done) = 1
-wait_done:
+
+    @ Polling: aguarda o hardware enquanto sinalizar busy (bit 0 = 1)
+wait_end_busy:
     mov     r7, #0              @ opcode STATUS
     str     r7, [r1]
     bl      pulse_hw
-    ldr     r7, [r12]           @ lê pio_readdata
-    ubfx    r3, r7, #0, #1      @ extrai bit 1 (done)
+    ldr     r7, [r12]           @ lê o registrador de status
+    ubfx    r3, r7, #0, #1      @ extrai bit 0 (busy)
     cmp     r3, #1
-    beq     wait_done           @ se done=0, continua polling
- 
-    @ Guarda o valor bruto final em r5 (retorno da função)
+    beq     wait_end_busy           @ ainda não terminou, continua polling
+
+    @ Salva o valor bruto final para retorno
     mov     r5, r7
     b       proc_done
- 
 
-@ =================================================================
-@ status_asm — opcode 0, lê pio_readdata e preenche array[5].
+
+
+@ status_asm — Lê o status do hardware e preenche um array (opcode 0).
 @ Protótipo C: uint32_t status_asm(uint32_t *dados)
-@
-@ dados[0] = busy   (bit  0)
-@ dados[1] = done   (bit  1)
-@ dados[2] = error  (bit  2)
-@ dados[3] = digito (bits 7:4)
-@ dados[4] = ciclos (bits 31:8)
-@ Retorno  = valor bruto de 32 bits
-@ =================================================================
+@ Campos extraídos de pio_readdata:
+@   dados[0] = busy   (bit  0)
+@   dados[1] = done   (bit  1)
+@   dados[2] = error  (bit  2)
+@   dados[3] = digito (bits 7:4)
+@   dados[4] = ciclos (bits 31:8)
+@ Retorno: valor bruto de 32 bits lido do hardware.
 status_asm:
     push    {r4-r12, lr}
-    mov     r10, r0             @ ponteiro para o array
+    mov     r10, r0             @ ponteiro para o array de saída
     mov     r5,  #0
     setup_hw
 
-    mov     r7, #0              @ opcode STATUS hardcoded
+    @ Envia instrução de leitura de status (opcode 0)
+    mov     r7, #0
     str     r7, [r1]
     bl      pulse_hw
 
-    ldr     r7, [r12]           @ lê pio_readdata
-    mov     r5, r7              @ valor bruto = retorno
+    @ Lê o valor bruto e extrai cada campo por bit
+    ldr     r7, [r12]
+    mov     r5, r7              @ salva para retorno
 
     ubfx    r3, r7, #0, #1
-    str     r3, [r10, #0]
+    str     r3, [r10, #0]       @ dados[0] = busy
 
     ubfx    r3, r7, #1, #1
-    str     r3, [r10, #4]
+    str     r3, [r10, #4]       @ dados[1] = done
 
     ubfx    r3, r7, #2, #1
-    str     r3, [r10, #8]
+    str     r3, [r10, #8]       @ dados[2] = error
 
     ubfx    r3, r7, #4, #4
-    str     r3, [r10, #12]
+    str     r3, [r10, #12]      @ dados[3] = dígito predito
 
     ubfx    r3, r7, #8, #24
-    str     r3, [r10, #16]
+    str     r3, [r10, #16]      @ dados[4] = contagem de ciclos
 
     b       proc_done
 
-@ =================================================================
-@ Saída comum de todas as funções de carga/controle
-@ =================================================================
+
+@ Saída comum de todas as funções de carga e controle.
+@ r5 carrega o valor de retorno (0 ou valor bruto de status).
 proc_done:
     mov     r0, r5
 err_ret:
     pop     {r4-r12, pc}
 
-@ =================================================================
-@ pulse_hw — sub-rotina interna.
-@ Convenção: r2 aponta para pio_hpswrite antes do BL.
-@ =================================================================
+@ pulse_hw — Gera um pulso de clock manual no hardware.
+@ Ativa o bit de clock em pio_hpswrite e desativa.
+@ Convenção: r2 deve apontar para pio_hpswrite antes do BL.
 pulse_hw:
     push    {r3}
     mov     r3, #CTRL_CLK_BIT
-    str     r3, [r2]
-    mov     r3, #150
-1:  subs    r3, r3, #1
-    bne     1b
+    str     r3, [r2]            @ ativa clock
+
     mov     r3, #0
-    str     r3, [r2]
+    str     r3, [r2]            @ desativa clock
     pop     {r3}
     bx      lr
 
