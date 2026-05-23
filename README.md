@@ -973,31 +973,132 @@ A transição do fluxo de controle do software de alto nível (C) para o nível 
 
 ## 25. Compilação e Execução — Marco 2
 
-### Compilação no HPS (DE1-SoC)
+````markdown
+# Compilação e Execução
 
-```bash
-# Compilação direta no HPS (ARM nativo)
-gcc -O2 -o marco2 marco2.c rotinas.s
+Para testar o coprocessador ELM em conjunto com o processador ARM, é necessário preparar tanto o ambiente de hardware (FPGA) quanto o de software (HPS).
 
-# Compilação cruzada (em x86 com toolchain ARM)
-arm-linux-gnueabihf-gcc -O2 -o marco2 marco2.c rotinas.s
+---
+
+## 1. Configuração do Hardware (FPGA)
+
+Antes de executar o código no processador ARM, o hardware do coprocessador precisa ser sintetizado e gravado na placa.
+
+1. Localize o projeto do Quartus contendo a integração entre o coprocessador e o ARM.  
+   O projeto está disponível no repositório na pasta:
+
+   ```text
+   hps/quartus
+````
+
+2. Abra o projeto e adicione todos os arquivos de descrição de hardware em Verilog (`.v`) do coprocessador, localizados na pasta:
+
+   ```text
+   rtl/
+   ```
+
+3. Compile o projeto no Quartus Prime.
+
+4. Faça o upload (programação) do bitstream gerado para a FPGA.
+
+---
+
+## 2. Preparação do Ambiente de Software
+
+No sistema operacional executando no ARM, crie um diretório de trabalho e copie para ele os seguintes arquivos do repositório.
+
+### Arquivos-fonte e cabeçalhos
+
+Localizados na pasta `hps/`:
+
+* `marco2.c`
+* `rotinas.s`
+* `hps_0.h`
+* `api.h`
+
+### Arquivos binários
+
+Copie também todos os arquivos `.bin` necessários para os dados da rede neural e imagens de teste, disponíveis em:
+
+```text
+assets/arquivos_binarios/
 ```
 
-### Execução
+> **Importante:**
+> Todos os arquivos listados acima devem estar exatamente no mesmo diretório na placa para que a compilação e a execução ocorram corretamente.
+
+---
+
+## 3. Compilação
+
+Com todos os arquivos reunidos no mesmo diretório, utilize o GCC no terminal do ARM para gerar o executável.
+
+O comando abaixo realiza simultaneamente:
+
+* a compilação do código em C;
+* a montagem das rotinas em Assembly.
 
 ```bash
-# Requer acesso root para abrir /dev/mem
-sudo ./marco2
+gcc marco2.c rotinas.s -o executavel
 ```
 
-### Arquivos binários necessários
+---
 
-| Arquivo | Conteúdo | Elementos | Tipo |
-|---------|----------|-----------|------|
-| `nove.bin` | Imagem do dígito 9 | 784 | `uint8` |
-| `pesos.bin` | Matriz W | 100.352 | `uint16` (Q4.12) |
-| `bias.bin` | Vetor bias | 128 | `uint16` (Q4.12) |
-| `beta.bin` | Matriz β | 1.280 | `uint16` (Q4.12) |
+## 4. Execução
+
+Para executar o programa, é obrigatório utilizar privilégios de superusuário (`sudo`).
+
+Essa permissão é necessária porque o software realiza mapeamento de memória física (MMIO), acessando o dispositivo especial `/dev/mem` para estabelecer a comunicação com a FPGA.
+
+Execute o programa com:
+
+```bash
+sudo ./executavel
+```
+
+---
+
+# Trocando a Imagem de Inferência
+
+Por padrão, o programa realiza inferência utilizando uma imagem específica do dataset. Caso deseje testar outra imagem, é necessário alterar o código-fonte antes da compilação.
+
+## Passos
+
+1. Abra o arquivo:
+
+   ```text
+   marco2.c
+   ```
+
+2. Localize a estrutura `dados_cfg`, responsável por definir os arquivos binários carregados nos buffers.
+
+3. Altere a string correspondente à imagem desejada.
+
+O trecho a ser modificado é:
+
+```c
+static const dado_t dados_cfg[] = {
+    { "nove.bin",  1, 784    },  // imagem de entrada: 784 pixels uint8
+    { "pesos.bin", 2, 100352 },  // pesos da rede: 100352 valores uint16
+    { "bias.bin",  2, 128    },  // bias da camada densa: 128 uint16
+    { "beta.bin",  2, 1280   },  // parâmetros beta (BatchNorm): 1280
+};
+```
+
+Por exemplo, para utilizar outra imagem:
+
+```c
+"nove.bin"
+```
+
+pode ser substituído por:
+
+```c
+"oito.bin"
+```
+
+> **Importante:**
+> O novo arquivo `.bin` escolhido também deve estar presente no mesmo diretório do executável no momento da execução.
 
 ---
 
