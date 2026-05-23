@@ -697,7 +697,99 @@ MI-SD/
 
 ---
 
-## 14. Visão Geral do Marco 2
+## 14. Levantamento de Requisitos — Marco 2
+
+### 14.1 Requisitos Funcionais
+
+| ID | Requisito |
+|----|-----------|
+| RF-M2-01 | O driver deve abrir o dispositivo `/dev/mem` via syscall `SYS_OPEN` com flags `O_RDWR \| O_SYNC` |
+| RF-M2-02 | O driver deve mapear 4 KB a partir do endereço físico `0xFF200000` (LW Bridge) via syscall `SYS_MMAP2` |
+| RF-M2-03 | O driver deve expor a função `init_hw_asm()` que inicializa o mapeamento e retorna 0 em sucesso ou -1 em falha |
+| RF-M2-04 | O driver deve expor a função `exit_hw_asm()` que desfaz o mapeamento e fecha `/dev/mem`; deve ser idempotente |
+| RF-M2-05 | O driver deve expor a função `reset_hw_asm()` que aplica um pulso de reset na FSM do co-processador |
+| RF-M2-06 | O driver deve expor a função `start_asm()` que dispara a inferência e bloqueia até o hardware sinalizar conclusão via polling |
+| RF-M2-07 | O driver deve expor `carregar_img_asm(void*)` que transfere 784 pixels `uint8` para a `ram_img` do co-processador |
+| RF-M2-08 | O driver deve expor `carregar_w_asm(void*)` que transfere 100.352 pesos `uint16` (Q4.12) para a `ram_pesos` usando protocolo de duas instruções por elemento (opcodes `0x6` + `0x2`) |
+| RF-M2-09 | O driver deve expor `carregar_bias_asm(void*)` que transfere 128 bias `uint16` (Q4.12) para a `ram_bias` |
+| RF-M2-10 | O driver deve expor `carregar_beta_asm(void*)` que transfere 1.280 betas `uint16` (Q4.12) para a `ram_beta` |
+| RF-M2-11 | O driver deve expor `status_asm(uint32_t*)` que lê `pio_readdata` e preenche o array `dados[0..4]` com: busy, done, error, dígito predito e ciclos de clock |
+| RF-M2-12 | Cada instrução enviada ao co-processador deve ser confirmada por um pulso de clock manual em `pio_hpswrite` (sub-rotina `pulse_hw`) |
+| RF-M2-13 | A aplicação de teste (`marco2.c`) deve executar 1.000 inferências consecutivas com a mesma imagem e verificar acurácia igual a 100% |
+| RF-M2-14 | Todos os protótipos da API devem ser declarados no cabeçalho público `api.h`, sem dependências além de `<stdint.h>` |
+
+### 14.2 Requisitos Não-Funcionais
+
+| ID | Requisito |
+|----|-----------|
+| RNF-M2-01 | As rotinas críticas de acesso ao hardware (`init`, `exit`, `reset`, `start`, `carregar_*`, `status`) devem ser implementadas exclusivamente em Assembly ARM (ARMv7, modo ARM, sintaxe unificada) |
+| RNF-M2-02 | O código Assembly deve usar apenas syscalls Linux (`SYS_OPEN`, `SYS_MMAP2`, `SYS_MUNMAP`, `SYS_CLOSE`) sem dependências de bibliotecas externas para o acesso ao hardware |
+| RNF-M2-03 | O driver deve ser compilável diretamente no HPS com `gcc` nativo ou por compilação cruzada com `arm-linux-gnueabihf-gcc`, sem etapas de build adicionais |
+| RNF-M2-04 | A função `exit_hw_asm()` deve ser registrada via `atexit()` na aplicação chamadora para garantir liberação de recursos mesmo em saídas inesperadas |
+| RNF-M2-05 | O endereço base mapeado (`hw_base`) e o file descriptor (`hw_fd`) devem ser armazenados em variáveis globais na seção `.bss`, isoladas da pilha da aplicação |
+| RNF-M2-06 | O pulso de clock (`pulse_hw`) deve aguardar no mínimo 150 ciclos de delay entre a borda de subida e a borda de descida, garantindo setup/hold do co-processador |
+| RNF-M2-07 | A execução do driver requer privilégios de superusuário (`sudo`) devido ao acesso a `/dev/mem` |
+| RNF-M2-08 | O código Assembly deve ser documentado com comentários descrevendo a função de cada bloco, os registradores utilizados e os efeitos colaterais |
+
+### 14.3 Restrições
+
+| Restrição | Descrição |
+|-----------|-----------|
+| **Acesso ao hardware** | Exclusivamente via MMIO mapeado em `/dev/mem`; proibido o uso de módulos de kernel ou outros mecanismos de I/O |
+| **Linguagem do driver** | As rotinas de acesso ao hardware obrigatoriamente em Assembly ARM puro; a aplicação de controle pode ser em C |
+| **Barramento** | Apenas o Lightweight HPS-to-FPGA AXI Bridge (`0xFF200000`, 4 KB) é utilizado; nenhum outro barramento ou periférico é acessado |
+| **Largura da instrução** | Todas as instruções enviadas ao co-processador têm 32 bits fixos no formato `[opcode(4)][addr(12)][data(16)]` |
+| **Endereçamento de pesos W** | O campo `addr` de 12 bits da ISA é insuficiente para as 100.352 posições da `ram_pesos`; obrigatório o uso de opcode `0x6` para definir os 17 bits de endereço antes de cada escrita com opcode `0x2` |
+| **Polling** | A espera pelo término da inferência é feita por polling ativo do bit `busy` em `pio_readdata`; interrupções não são utilizadas |
+| **Ordem de carga** | Os dados (imagem, pesos, bias, beta) devem ser carregados completamente antes do `START`; o driver não impede violação dessa ordem |
+
+### 14.4 Interfaces Externas
+
+#### Interface com o co-processador (MMIO)
+
+| Sinal | Endereço Físico | Tipo | Descrição |
+|-------|----------------|------|-----------|
+| `pio_readdata` | `0xFF200000` | Entrada (32 bits) | Lê status, dígito predito e ciclos de clock da FPGA |
+| `pio_hpswrite` | `0xFF200010` | Saída (2 bits) | Bit 1: pulso de clock · Bit 0: reset da FSM |
+| `pio_instrucao` | `0xFF200020` | Saída (32 bits) | Instrução de 32 bits enviada ao co-processador |
+
+#### Interface com a aplicação C (API pública)
+
+```c
+/* api.h — contratos da API; erros devolvidos por valor de retorno */
+int      init_hw_asm(void);            /* 0 = ok, -1 = falha em open/mmap */
+void     exit_hw_asm(void);            /* seguro chamar múltiplas vezes    */
+void     reset_hw_asm(void);           /* reinicia FSM; não bloqueia        */
+void     start_asm(void);              /* bloqueia até done ou timeout      */
+void     carregar_img_asm(void *buf);  /* buf: uint8[784]                   */
+void     carregar_w_asm(void *buf);    /* buf: uint16[100352] Q4.12         */
+void     carregar_bias_asm(void *buf); /* buf: uint16[128]   Q4.12         */
+void     carregar_beta_asm(void *buf); /* buf: uint16[1280]  Q4.12         */
+uint32_t status_asm(uint32_t *dados);  /* dados[0..4]; retorna valor bruto  */
+```
+
+#### Dados de entrada esperados por função
+
+| Função | Arquivo binário | Elementos | Tipo por elemento | Tamanho total |
+|--------|----------------|-----------|-------------------|---------------|
+| `carregar_img_asm` | `nove.bin` / imagem PNG decodificada | 784 | `uint8` | 784 B |
+| `carregar_w_asm` | `pesos.bin` | 100.352 | `uint16` Q4.12 | ~196 KB |
+| `carregar_bias_asm` | `bias.bin` | 128 | `uint16` Q4.12 | 256 B |
+| `carregar_beta_asm` | `beta.bin` | 1.280 | `uint16` Q4.12 | 2,5 KB |
+
+#### Array de retorno de `status_asm`
+
+| Índice | Campo | Bits em `pio_readdata` | Descrição |
+|--------|-------|------------------------|-----------|
+| `dados[0]` | `busy` | bit 0 | 1 enquanto a FSM está processando |
+| `dados[1]` | `done` | bit 1 | 1 quando a inferência foi concluída |
+| `dados[2]` | `error` | bit 2 | 1 se ocorreu erro de opcode |
+| `dados[3]` | `resultado` | bits 7:4 | Dígito predito (0–9) |
+| `dados[4]` | `ciclos` | bits 31:8 | Ciclos de clock da inferência |
+
+---
+
+## 15. Visão Geral do Marco 2
 
 Este marco implementa o lado de software: o código que roda no processador ARM (HPS) da DE1-SoC e se comunica com o co-processador ELM sintetizado na FPGA. A comunicação é feita através do barramento **Lightweight HPS-to-FPGA AXI**, mapeado no endereço físico `0xFF200000`, permitindo ao ARM escrever e ler registradores da FPGA via ponteiros de memória.
 
@@ -733,7 +825,7 @@ Este marco implementa o lado de software: o código que roda no processador ARM 
 
 ---
 
-## 15. Configuração do Platform Designer
+## 16. Configuração do Platform Designer
 
 Três componentes **PIO (Parallel I/O)** foram adicionados ao `soc_system.qsys` no Platform Designer e conectados à porta `h2f_lw_axi_master` do HPS:
 
@@ -751,7 +843,7 @@ Após configurar os PIOs: **Generate > Generate HDL...** e recompilação do pro
 
 ---
 
-## 16. Geração do Cabeçalho de Endereços
+## 17. Geração do Cabeçalho de Endereços
 
 O cabeçalho `hps_0.h` foi gerado a partir do arquivo `.sopcinfo` do projeto para que o software conheça os offsets de cada PIO sem hardcodá-los:
 
@@ -763,7 +855,7 @@ O arquivo gerado define constantes como `PIO_INSTRUCAO_BASE`, `PIO_HPSWRITE_BASE
 
 ---
 
-## 19. Driver Assembly — API Pública
+## 18. Driver Assembly — API Pública
 
 O driver é definido em `api.h` e implementado em `rotinas.s`. Toda a comunicação com o hardware ocorre dentro dessas rotinas, isolando completamente a aplicação C dos detalhes de MMIO e syscalls.
 
@@ -824,7 +916,7 @@ pulse_hw:
 
 ---
 
-## 18. Mapa de Registradores MMIO
+## 19. Mapa de Registradores MMIO
 
 Base física: `0xFF200000` (Lightweight AXI Bridge, 4 KB mapeados via `/dev/mem`)
 
@@ -852,7 +944,7 @@ Base física: `0xFF200000` (Lightweight AXI Bridge, 4 KB mapeados via `/dev/mem`
 
 ---
 
-## 19. Formato das Instruções ISA (32 bits)
+## 20. Formato das Instruções ISA (32 bits)
 
 ```
  31      28  27      16  15       0
@@ -874,7 +966,7 @@ Base física: `0xFF200000` (Lightweight AXI Bridge, 4 KB mapeados via `/dev/mem`
 
 ---
 
-## 20. Fluxo Completo de Inferência
+## 21. Fluxo Completo de Inferência
 
 ```
  1. init_hw_asm()          → open /dev/mem → mmap2 0xFF200 → salva hw_base
@@ -890,6 +982,66 @@ Base física: `0xFF200000` (Lightweight AXI Bridge, 4 KB mapeados via `/dev/mem`
 ```
 
 > **Resultado:** `estado[3]` contém o dígito predito (0–9) e `estado[4]` a contagem de ciclos da inferência.
+
+---
+
+## 22. Compilação e Execução — Marco 2
+
+### Compilação no HPS (DE1-SoC)
+
+```bash
+# Compilação direta no HPS (ARM nativo)
+gcc -O2 -o marco2 marco2.c rotinas.s
+
+# Compilação cruzada (em x86 com toolchain ARM)
+arm-linux-gnueabihf-gcc -O2 -o marco2 marco2.c rotinas.s
+```
+
+### Execução
+
+```bash
+# Requer acesso root para abrir /dev/mem
+sudo ./marco2
+```
+
+### Arquivos binários necessários
+
+| Arquivo | Conteúdo | Elementos | Tipo |
+|---------|----------|-----------|------|
+| `nove.bin` | Imagem do dígito 9 | 784 | `uint8` |
+| `pesos.bin` | Matriz W | 100.352 | `uint16` (Q4.12) |
+| `bias.bin` | Vetor bias | 128 | `uint16` (Q4.12) |
+| `beta.bin` | Matriz β | 1.280 | `uint16` (Q4.12) |
+
+---
+
+## 23. Teste de Estabilidade — Marco 2
+
+O `marco2.c` executa **1000 inferências consecutivas** com a mesma imagem (`nove.bin`) para validar a estabilidade do sistema. A cada iteração o hardware é reiniciado com `reset_hw_asm()` e todos os dados são recarregados — o cenário mais exigente para verificar a ausência de estados residuais.
+
+```c
+/* marco2.c — loop de estabilidade */
+for (int i = 0; i < 1000; i++) {
+    reset_hw_asm();
+    carregar_img_asm (bufs[0]);
+    carregar_w_asm   (bufs[1]);
+    carregar_bias_asm(bufs[2]);
+    carregar_beta_asm(bufs[3]);
+    start_asm();
+    status_asm(status);
+    if (status[3] == 9) cont++;
+}
+printf("Acertos: %d\n", cont);  /* Esperado: 1000 */
+```
+
+### Resultado
+
+| Métrica | Valor |
+|---------|-------|
+| Inferências executadas | 1.000 |
+| Acertos (pred = 9) | **1.000** |
+| Taxa de acerto | **100%** |
+| Estabilidade | Comprovada — nenhuma falha ou estado residual |
 
 ---
 
