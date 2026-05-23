@@ -41,7 +41,7 @@
 6. [Driver Assembly — API Pública](#6-driver-assembly--api-pública)
 7. [Registradores MMIO](#7-registradores-mmio)
 8. [Formato das Instruções ISA (32 bits)](#8-formato-das-instruções-isa-32-bits)
-9. [Fluxo de Execução e Integração (C/ Assembly)](#9-fluxo-de-execução-e-integração-c-/-assembly)
+9. [Fluxo de Execução e Integração (C/ Assembly)](#9-fluxo-de-execução-e-integração-c--assembly)
 10. [Compilação e Execução — Marco 2](#10-compilação-e-execução--marco-2)
 11. [Teste de Estabilidade — Marco 2](#11-teste-de-estabilidade--marco-2)
 12. [Estrutura do Repositório](#12-estrutura-do-repositório)
