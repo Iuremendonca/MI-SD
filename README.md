@@ -30,22 +30,23 @@
 10. [Processo de Desenvolvimento](#10-processo-de-desenvolvimento)
 11. [Simulação e Testes](#11-simulação-e-testes)
 12. [Análise dos Resultados](#12-análise-dos-resultados)
-13. [Estrutura do Repositório](#13-estrutura-do-repositório)
-14. [Equipe](#14-equipe)
-15. [Referências](#15-referências)
+
 
 ### Marco 2 — Integração HW↔Linux via Driver Assembly
-16. [Levantamento de Requisitos — Marco 2](#1-levantamento-de-requisitos--marco-2)
-17. [Visão Geral do Marco 2](#17-visão-geral-do-marco-2)
-18. [Configuração do Platform Designer](#18-configuração-do-platform-designer)
-19. [Interfaces Externas](#19-interfaces-externas) 
-20. [Geração do Cabeçalho de Endereços](#19-geração-do-cabeçalho-de-endereços)
-21. [Driver Assembly — API Pública](#20-driver-assembly--api-pública)
-22. [Mapa de Registradores MMIO](#21-mapa-de-registradores-mmio)
-23. [Formato das Instruções ISA (32 bits)](#22-formato-das-instruções-isa-32-bits)
-24. [Fluxo Completo de Inferência](#23-fluxo-completo-de-inferência)
-25. [Compilação e Execução — Marco 2](#24-compilação-e-execução--marco-2)
-26. [Teste de Estabilidade — Marco 2](#25-teste-de-estabilidade--marco-2)
+1. [Levantamento de Requisitos — Marco 2](#1-levantamento-de-requisitos--marco-2)
+2. [Visão Geral do Marco 2](#2-visão-geral-do-marco-2)
+3. [Configuração do Platform Designer](#3-configuração-do-platform-designer)
+4. [Interfaces Externas](#4-interfaces-externas) 
+5. [Geração do Cabeçalho de Endereços](5-geração-do-cabeçalho-de-endereços)
+6. [Driver Assembly — API Pública](#6-driver-assembly--api-pública)
+7. [Registradores MMIO](#7-registradores-mmio)
+8. [Formato das Instruções ISA (32 bits)](#8-formato-das-instruções-isa-32-bits)
+9. [Fluxo de Execução e Integração (C/ Assembly)](#9-fluxo-de-execução-e-integração-c-/-assembly)
+10. [Compilação e Execução — Marco 2](#10-compilação-e-execução--marco-2)
+11. [Teste de Estabilidade — Marco 2](#11-teste-de-estabilidade--marco-2)
+12. [Estrutura do Repositório](#12-estrutura-do-repositório)
+13. [Equipe](#13-equipe)
+14. [Referências](#14-referências)
 
 
 ---
