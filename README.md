@@ -35,7 +35,7 @@
 15. [Referências](#15-referências)
 
 ### Marco 2 — Integração HW↔Linux via Driver Assembly
-16. [Levantamento de Requisitos — Marco 2](#16-levantamento-de-requisitos--marco-2)
+16. [Levantamento de Requisitos — Marco 2](#1-levantamento-de-requisitos--marco-2)
 17. [Visão Geral do Marco 2](#17-visão-geral-do-marco-2)
 18. [Configuração do Platform Designer](#18-configuração-do-platform-designer)
 19. [Interfaces Externas](#19-interfaces-externas) 
@@ -646,56 +646,9 @@ O acoplamento da ISA introduziu multiplexadores nos barramentos de endereço das
 
 A ativação sigmoid piecewise linear — cuja abordagem é fundamentada em **Oliveira (2017)** [[7]](#15-referências) — introduz erro máximo de `±0.009` em relação ao sigmoid exato, dentro do tolerável para classificação de dígitos. O acumulador interno de 40 bits garante que não há overflow durante a fase de acumulação do MAC, com saturação aplicada apenas na saída para a faixa Q4.12. A validação em placa confirmou que o comportamento observado em simulação foi preservado no hardware real, corroborando os resultados obtidos em trabalhos similares de aceleração de ELM em FPGA [[2]](#15-referências).
 
----
 
-## 13. Estrutura do Repositório
 
-```
-MI-SD/
-├── README.md                   ← Este arquivo
-│
-├── assets/                     ← Recursos de dados do modelo
-│   ├── images_mif/             ← Imagens de teste convertidas para formato MIF
-│   └── images_png/             ← Imagens de teste no formato PNG (28×28, grayscale)
-│
-├── docs/                       ← Documentação complementar
-│                               ← Diagramas, especificações e relatórios
-│
-├── quartus/                    ← Projeto Intel Quartus Prime
-│                               ← Arquivos de síntese, pinos e saída (.sof)
-│
-├── rtl/                        ← Código-fonte Verilog (RTL)
-│                               ← Todos os módulos do co-processador ELM
-│
-├── scripts/                    ← Scripts Python de suporte
-│   ├── txt/                    ← Arquivos para uso nos testbenchs e elm_model.py 
-│
-├── simulation/                 ← Artefatos de simulação (ModelSim / Icarus)
-│                               ← Testbenches, formas de onda e relatórios
-│
-└── testbenchs/                 ← Testbenches individuais por módulo
-                                ← Validação unitária de cada submódulo RTL
-```
 
----
-
-## 14. Equipe
-
-> _Iure Rocha Moreira Mendonça._
-> _João Pedro da Silva Ferreira._
-> _Thaylane da Silva._
-
----
-
-## 15. Referências
-
-1. **DE1-SoC User Manual** — Terasic Technologies. Disponível em: [fpgacademy.org](https://fpgacademy.org/boards.html)
-2. **Accelerating Extreme Learning Machine on FPGA** — UTHM Publisher. Disponível em: [publisher.uthm.edu.my](https://publisher.uthm.edu.my/ojs/index.php/ijie/article/view/4431)
-3. **Extreme learning machine: algorithm, theory and applications** — ResearchGate. Disponível em: [researchgate.net](https://www.researchgate.net/publication/257512921)
-4. **A máquina de aprendizado extremo (ELM)** — Computação Inteligente. Disponível em: [computacaointeligente.com.br](https://computacaointeligente.com.br/algoritmos/maquina-de-aprendizado-extremo/)
-5. **Intel Quartus Prime Lite Design Software** — versão 21.1.
-6. **Icarus Verilog** — versão 11.0. Disponível em: [iverilog.icarus.com](http://iverilog.icarus.com/)
-7. OLIVEIRA, J. G. M. *Uma arquitetura reconfigurável de Rede Neural Artificial utilizando FPGA*. Dissertação (Mestrado) – UNIFEI, Itajubá, 2017. Disponível em: [repositorio.unifei.edu.br/xmlui/handle/123456789/861](https://repositorio.unifei.edu.br/xmlui/handle/123456789/861)
 
 ---
 
@@ -703,9 +656,9 @@ MI-SD/
 
 ---
 
-## 16. Levantamento de Requisitos — Marco 2
+## 1. Levantamento de Requisitos — Marco 2
 
-### 16.1 Requisitos Funcionais
+### 1.1 Requisitos Funcionais
 
 | ID | Requisito |
 |----|-----------|
@@ -724,7 +677,7 @@ MI-SD/
 | RF-M2-13 | A aplicação de teste (`marco2.c`) deve executar 1.000 inferências consecutivas com a mesma imagem e verificar acurácia igual a 100% |
 | RF-M2-14 | Todos os protótipos da API devem ser declarados no cabeçalho público `api.h`, sem dependências além de `<stdint.h>` |
 
-### 16.2 Requisitos Não-Funcionais
+### 1.2 Requisitos Não-Funcionais
 
 | ID | Requisito |
 |----|-----------|
@@ -737,7 +690,7 @@ MI-SD/
 | RNF-M2-07 | A execução do driver requer privilégios de superusuário (`sudo`) devido ao acesso a `/dev/mem` |
 | RNF-M2-08 | O código Assembly deve ser documentado com comentários descrevendo a função de cada bloco, os registradores utilizados e os efeitos colaterais |
 
-### 16.3 Restrições
+### 1.3 Restrições
 
 | Restrição | Descrição |
 |-----------|-----------|
@@ -750,7 +703,7 @@ MI-SD/
 | **Ordem de carga** | Os dados (imagem, pesos, bias, beta) devem ser carregados completamente antes do `START`; o driver não impede violação dessa ordem |
 
 
-## 17. Visão Geral do Marco 2
+## 2. Visão Geral do Marco 2
 
 Este marco implementa o lado de software: o código que roda no processador ARM (HPS) da DE1-SoC e se comunica com o co-processador ELM sintetizado na FPGA. A comunicação é feita através do barramento **Lightweight HPS-to-FPGA AXI**, mapeado no endereço físico `0xFF200000`, permitindo ao ARM escrever e ler registradores da FPGA via ponteiros de memória.
 
@@ -786,7 +739,7 @@ Este marco implementa o lado de software: o código que roda no processador ARM 
 
 ---
 
-## 18. Configuração do Platform Designer
+## 3. Configuração do Platform Designer
 
 Três componentes **PIO (Parallel I/O)** foram adicionados ao `soc_system.qsys` no Platform Designer e conectados à porta `h2f_lw_axi_master` do HPS:
 
@@ -798,7 +751,7 @@ Após configurar os PIOs: **Generate > Generate HDL...** e recompilação do pro
 
 ---
 
-### 19. Interfaces Externas
+## 4. Interfaces Externas
 
 #### Interface com o co-processador (MMIO)
 
@@ -845,7 +798,7 @@ uint32_t status_asm(uint32_t *dados);  /* dados[0..4]; retorna valor bruto  */
 ---
 
 
-## 20. Geração do Cabeçalho de Endereços
+## 5. Geração do Cabeçalho de Endereços
 
 O cabeçalho `hps_0.h` foi gerado a partir do arquivo `.sopcinfo` do projeto para que o software conheça os offsets de cada PIO sem hardcodá-los:
 
@@ -857,7 +810,7 @@ O arquivo gerado define constantes como `PIO_INSTRUCAO_BASE`, `PIO_HPSWRITE_BASE
 
 ---
 
-## 21. Driver Assembly — API Pública
+## 6. Driver Assembly — API Pública
 
 O driver é definido em `api.h` e implementado em `rotinas.s`. Toda a comunicação com o hardware ocorre dentro dessas rotinas, isolando completamente a aplicação C dos detalhes de MMIO e syscalls.
 
@@ -897,7 +850,7 @@ pulse_hw:
 
 ---
 
-## 22. Registradores MMIO
+## 7. Registradores MMIO
 
 ### Campos de `pio_readdata`
 
@@ -917,7 +870,7 @@ pulse_hw:
 
 ---
 
-## 23. Formato das Instruções ISA (32 bits)
+## 8. Formato das Instruções ISA (32 bits)
 
 ```
  31      28  27      16  15       0
@@ -939,20 +892,26 @@ pulse_hw:
 
 ---
 
-## 24. Fluxo de Execução e Integração (C / Assembly)
+## 9. Fluxo de Execução e Integração (C / Assembly)
 
 Para garantir a máxima eficiência e o correto alinhamento de dados entre o processador ARM e o coprocessador na FPGA, o sistema adota um fluxo estruturado de preparação de memória no ecossistema C antes da delegação de tarefas para as rotinas em Assembly.
 
-#### 1. Carga dos Arquivos Binários em Buffers (C)
+### Carga dos Arquivos Binários em Buffers (C)
 Todos os dados essenciais para o funcionamento da rede (como os pesos $W_H$, bias $B_H$, pesos de saída $\beta$ e as imagens do dataset MNIST) são lidos diretamente de arquivos binários e carregados na memória RAM utilizando estruturas de buffers gerenciadas em C.
 
-#### 2. Armazenamento como Inteiros Sem Sinal (Unsigned)
-No ambiente C, os dados extraídos dos binários são armazenados estritamente como tipos inteiros sem sinal (ex: uint16_t ou uint32_t).
+A leitura prévia para buffers em RAM elimina o gargalo de I/O (Input/Output) de disco durante a execução do algoritmo. Uma vez que os dados estão mapeados continuamente na memória volátil, o acesso por parte das rotinas de processamento passa a ser direto e com latência mínima, permitindo que o hardware opere em sua capacidade máxima de vazão.
 
-#### 3. Passagem de Parâmetros e Endereçamento Base para o Assembly
+### Armazenamento como Inteiros Sem Sinal (Unsigned)
+No ambiente C, os dados extraídos dos binários são armazenados estritamente como tipos inteiros sem sinal (ex: `uint16_t` ou `uint32_t`).
+
+A comunicação com o hardware exige a montagem de uma instrução final de 32 bits, que concatena o dado, o endereço de destino e o opcode da operação. Como os dados da rede neural possuem no máximo 16 bits e os registradores da arquitetura ARM possuem 32 bits, o uso de tipos com sinal (signed) geraria um problema grave: ao carregar um valor negativo de 16 bits no registrador, o processador ARM aplicaria a *extensão de sinal*, preenchendo todos os bits superiores (do 16 ao 31) com '1's. 
+
+O preenchimento indevido por causa da extensão de sinal acabaria corrompendo/sobrescrevendo os campos destinados ao opcode e ao endereço no momento em que a instrução fosse formada (via operações bit a bit de Shift e OR). O uso de inteiros sem sinal garante que os bits superiores permaneçam zerados, mantendo a integridade dos campos de controle na montagem da instrução.
+
+### Passagem de Parâmetros e Endereçamento Base para o Assembly
 A transição do fluxo de controle do software de alto nível (C) para o nível de máquina (Assembly) ocorre por meio de chamadas de funções da API do driver. No momento em que uma rotina em Assembly é invocada, o programa em C passa como argumento o *ponteiro base* (endereço de memória inicial) do buffer explicitamente relacionado àquela operação.
 
-#### 4. Fluxo em C
+### Fluxo em C
 ```
  1. init_hw_asm()          → open /dev/mem → mmap2 0xFF200 → salva hw_base
  2. reset_hw_asm()         → bit RESET=1 → aguarda → RESET=0
@@ -971,39 +930,31 @@ A transição do fluxo de controle do software de alto nível (C) para o nível 
 ---
 
 
-## 25. Compilação e Execução — Marco 2
+## 10. Compilação e Execução — Marco 2
 
-````markdown
 # Compilação e Execução
 
 Para testar o coprocessador ELM em conjunto com o processador ARM, é necessário preparar tanto o ambiente de hardware (FPGA) quanto o de software (HPS).
 
 ---
 
-## 1. Configuração do Hardware (FPGA)
+## Configuração do Hardware (FPGA)
 
 Antes de executar o código no processador ARM, o hardware do coprocessador precisa ser sintetizado e gravado na placa.
 
 1. Localize o projeto do Quartus contendo a integração entre o coprocessador e o ARM.  
-   O projeto está disponível no repositório na pasta:
+   O projeto está disponível no repositório na pasta  `hps/quartus `
 
-   ```text
-   hps/quartus
-````
-
-2. Abra o projeto e adicione todos os arquivos de descrição de hardware em Verilog (`.v`) do coprocessador, localizados na pasta:
-
-   ```text
-   rtl/
-   ```
+  
+2. Abra o projeto e adicione todos os arquivos de descrição de hardware em Verilog (`.v`) do coprocessador, localizados na pasta: `rtl/` 
 
 3. Compile o projeto no Quartus Prime.
 
-4. Faça o upload (programação) do bitstream gerado para a FPGA.
+4. Faça o upload (programação) do arquivo.sof gerado para a FPGA.
 
 ---
 
-## 2. Preparação do Ambiente de Software
+## Preparação do Ambiente de Software
 
 No sistema operacional executando no ARM, crie um diretório de trabalho e copie para ele os seguintes arquivos do repositório.
 
@@ -1018,18 +969,14 @@ Localizados na pasta `hps/`:
 
 ### Arquivos binários
 
-Copie também todos os arquivos `.bin` necessários para os dados da rede neural e imagens de teste, disponíveis em:
-
-```text
-assets/arquivos_binarios/
-```
+Copie também todos os arquivos `.bin` necessários para os dados da rede neural e imagens de teste, disponíveis em: `assets/arquivos_binarios/`
 
 > **Importante:**
 > Todos os arquivos listados acima devem estar exatamente no mesmo diretório na placa para que a compilação e a execução ocorram corretamente.
 
 ---
 
-## 3. Compilação
+## Compilação
 
 Com todos os arquivos reunidos no mesmo diretório, utilize o GCC no terminal do ARM para gerar o executável.
 
@@ -1044,7 +991,7 @@ gcc marco2.c rotinas.s -o executavel
 
 ---
 
-## 4. Execução
+## Execução
 
 Para executar o programa, é obrigatório utilizar privilégios de superusuário (`sudo`).
 
@@ -1064,11 +1011,7 @@ Por padrão, o programa realiza inferência utilizando uma imagem específica do
 
 ## Passos
 
-1. Abra o arquivo:
-
-   ```text
-   marco2.c
-   ```
+1. Abra o arquivo: `marco2.c`
 
 2. Localize a estrutura `dados_cfg`, responsável por definir os arquivos binários carregados nos buffers.
 
@@ -1102,7 +1045,7 @@ pode ser substituído por:
 
 ---
 
-## 26. Teste de Estabilidade — Marco 2
+## 11. Teste de Estabilidade — Marco 2
 
 O `marco2.c` executa **1000 inferências consecutivas** com a mesma imagem (`nove.bin`) para validar a estabilidade do sistema. A cada iteração o hardware é reiniciado com `reset_hw_asm()` e todos os dados são recarregados — o cenário mais exigente para verificar a ausência de estados residuais.
 
@@ -1131,7 +1074,58 @@ printf("Acertos: %d\n", cont);  /* Esperado: 1000 */
 | Estabilidade | Comprovada — nenhuma falha ou estado residual |
 
 ---
+## 12. Estrutura do Repositório
 
+```
+MI-SD/
+├── README.md                   ← Este arquivo
+│
+├── assets/                     ← Recursos de dados do modelo
+│   ├── arquivos binários/      ← Arquivos binarios para alimentar o marco 2
+|   ├── images_mif/             ← Imagens de teste convertidas para formato MIF
+│   └── images_png/             ← Imagens de teste no formato PNG (28×28, grayscale)
+│
+├── docs/                       ← Documentação complementar
+│                               ← Diagramas, especificações e relatórios
+│
+├── hps/                        ← Arquivos para execução da integração
+|    └── quartus/               ← Arquivos quartus da integração com o hps
+│
+├── quartus/                    ← Projeto Intel Quartus Prime
+│                               ← Arquivos de síntese, pinos e saída (.sof)
+│
+├── rtl/                        ← Código-fonte Verilog (RTL)
+│                               ← Todos os módulos do co-processador ELM
+│
+├── scripts/                    ← Scripts Python de suporte
+│   ├── txt/                    ← Arquivos para uso nos testbenchs e elm_model.py 
+│
+├── simulation/                 ← Artefatos de simulação (ModelSim / Icarus)
+│                               ← Testbenches, formas de onda e relatórios
+│
+└── testbenchs/                 ← Testbenches individuais por módulo
+                                ← Validação unitária de cada submódulo RTL
+```
+
+---
+
+## 13. Equipe
+
+> _Iure Rocha Moreira Mendonça._
+> _João Pedro da Silva Ferreira._
+> _Thaylane da Silva._
+
+---
+
+## 14. Referências
+
+1. **DE1-SoC User Manual** — Terasic Technologies. Disponível em: [fpgacademy.org](https://fpgacademy.org/boards.html)
+2. **Accelerating Extreme Learning Machine on FPGA** — UTHM Publisher. Disponível em: [publisher.uthm.edu.my](https://publisher.uthm.edu.my/ojs/index.php/ijie/article/view/4431)
+3. **Extreme learning machine: algorithm, theory and applications** — ResearchGate. Disponível em: [researchgate.net](https://www.researchgate.net/publication/257512921)
+4. **A máquina de aprendizado extremo (ELM)** — Computação Inteligente. Disponível em: [computacaointeligente.com.br](https://computacaointeligente.com.br/algoritmos/maquina-de-aprendizado-extremo/)
+5. **Intel Quartus Prime Lite Design Software** — versão 21.1.
+6. **Icarus Verilog** — versão 11.0. Disponível em: [iverilog.icarus.com](http://iverilog.icarus.com/)
+7. OLIVEIRA, J. G. M. *Uma arquitetura reconfigurável de Rede Neural Artificial utilizando FPGA*. Dissertação (Mestrado) – UNIFEI, Itajubá, 2017. Disponível em: [repositorio.unifei.edu.br/xmlui/handle/123456789/861](https://repositorio.unifei.edu.br/xmlui/handle/123456789/861)
 <div align="center">
 
 *Universidade Estadual de Feira de Santana — UEFS · Departamento de Tecnologia · TEC 499 MI Sistemas Digitais 2026.1*
