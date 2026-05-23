@@ -697,138 +697,200 @@ MI-SD/
 
 ---
 
-## 16. Visão Geral do Marco 2
+## 14. Visão Geral do Marco 2
 
-Este marco implementa o lado do software: o código que roda no processador ARM (HPS) da DE1-SoC e envia instruções ao co-processador ELM sintetizado na FPGA. A comunicação é feita através do barramento **Lightweight HPS-to-FPGA AXI**, um canal de 32 bits mapeado no endereço físico `0xFF200000` que permite ao ARM escrever e ler registradores da FPGA diretamente via ponteiros de memória.
+Este marco implementa o lado de software: o código que roda no processador ARM (HPS) da DE1-SoC e se comunica com o co-processador ELM sintetizado na FPGA. A comunicação é feita através do barramento **Lightweight HPS-to-FPGA AXI**, mapeado no endereço físico `0xFF200000`, permitindo ao ARM escrever e ler registradores da FPGA via ponteiros de memória.
 
-O fluxo completo de uma inferência a partir do HPS é:
+### Visão da Stack Completa
 
-1. Carregar os pesos W (100 352 elementos) na `ram_pesos` via opcode `STORE_WEIGHTS`
-2. Carregar o bias (128 elementos) na `ram_bias` via opcode `STORE_BIAS`
-3. Carregar os pesos β (1 280 elementos) na `ram_beta` via opcode `STORE_BETA`
-4. Carregar a imagem (784 pixels) na `ram_img` via opcode `STORE_IMG`
+```
+┌─────────────────────────┐
+│   Aplicação C (marco2.c)│  chamadas de função C
+├─────────────────────────┤
+│  Driver Assembly        │  syscalls Linux + STR/LDR
+│     (rotinas.s)         │  diretos no barramento
+├─────────────────────────┤
+│  LW Bridge 0xFF200000   │  4 KB mapeados via /dev/mem
+│  ┌──────┬──────┬──────┐ │
+│  │READ  │CTRL  │INSTR │ │  offsets 0x00, 0x10, 0x20
+│  └──────┴──────┴──────┘ │
+├─────────────────────────┤
+│  Co-proc FPGA           │  ELM Inferência (elm_accel)
+│  (elm_accel)            │
+└─────────────────────────┘
+```
+
+### Fluxo de uma Inferência Completa via HPS
+
+1. Carregar pesos W (100.352 elementos) via opcode `STORE_W_ADDR` + `STORE_WEIGHTS`
+2. Carregar bias (128 elementos) via opcode `STORE_BIAS`
+3. Carregar pesos β (1.280 elementos) via opcode `STORE_BETA`
+4. Carregar imagem (784 pixels) via opcode `STORE_IMG`
 5. Disparar a FSM com `START`
-6. Disparar `STATUS` e ler o dígito predito nos bits `[7:4]` no terminal
+6. Consultar `STATUS` e ler o dígito predito em `[7:4]`
 
-> A ordem de carga dos pesos (passos 1–3) é livre entre si, mas todos devem
-> ser enviados antes do `START`. O driver não impede disparar a inferência sem
-> os pesos carregados — essa responsabilidade é do usuário.
+> A ordem dos passos 1–4 é livre entre si, mas todos devem preceder o `START`. O driver não impede iniciar a inferência sem dados carregados — essa responsabilidade é do código chamador.
 
 ---
 
-## 17. Configuração do Platform Designer
+## 15. Configuração do Platform Designer
 
-Para que o HPS consiga enxergar o co-processador, três componentes **PIO (Parallel I/O)** foram adicionados ao `soc_system.qsys` no Platform Designer e conectados à porta mestre `h2f_lw_axi_master` do HPS:
+Três componentes **PIO (Parallel I/O)** foram adicionados ao `soc_system.qsys` no Platform Designer e conectados à porta `h2f_lw_axi_master` do HPS:
+
 <img width="767" height="660" alt="image" src="https://github.com/user-attachments/assets/6e16c395-be9d-4126-b795-340f37011193" />
 
 | Componente | Direção | Offset (LW Bridge) | Função |
 |---|---|---|---|
 | `pio_readdata` | Input (32 bits) | `0x0000` | Leva o resultado da FPGA ao HPS (`hps_readdata`) |
-| `pio_hpswrite` | Output (2 bits) | `0x0010` | Pulso de escrita e reset (`hps_write`) |
+| `pio_hpswrite` | Output (2 bits) | `0x0010` | Pulso de clock e reset (`hps_write`) |
 | `pio_instrucao` | Output (32 bits) | `0x0020` | Palavra de instrução de 32 bits (`instrucao`) |
 
-Cada PIO foi exportado como `Conduit` e conectado nos fios correspondentes do top-level `ghrd_top.v` (`fio_instrucao`, `fio_hps_write`, `fio_hps_readdata`), que por sua vez chegam às portas do módulo `elm_accel`.
+Cada PIO foi exportado como `Conduit` e conectado no top-level `ghrd_top.v` (`fio_instrucao`, `fio_hps_write`, `fio_hps_readdata`), que chega às portas do módulo `elm_accel`.
 
-Após configurar os PIOs, o HDL foi regenerado via **Generate > Generate HDL...** e o projeto recompilado no Quartus para gravar o novo `.sof` na placa.
+Após configurar os PIOs: **Generate > Generate HDL...** e recompilação do projeto para gravar o novo `.sof` na placa.
 
 ---
 
-## 18. Geração do Cabeçalho de Endereços
+## 16. Geração do Cabeçalho de Endereços
 
-Para que o software em C conheça os offsets de cada PIO sem hardcodá-los, o cabeçalho `hps_0.h` foi gerado a partir do arquivo `.sopcinfo` do projeto:
+O cabeçalho `hps_0.h` foi gerado a partir do arquivo `.sopcinfo` do projeto para que o software conheça os offsets de cada PIO sem hardcodá-los:
 
 ```bash
 sopc-create-header-files "./soc_system.sopcinfo" --single hps_0.h --module hps_0
 ```
 
-O arquivo gerado define constantes como `PIO_INSTRUCAO_BASE`, `PIO_HPSWRITE_BASE` e `PIO_READDATA_BASE` — os offsets de cada PIO dentro do espaço do Lightweight Bridge. São esses valores que as rotinas assembly usam para calcular os endereços virtuais após o `mmap`.
+O arquivo gerado define constantes como `PIO_INSTRUCAO_BASE`, `PIO_HPSWRITE_BASE` e `PIO_READDATA_BASE` — os offsets que as rotinas Assembly usam para calcular os endereços virtuais após o `mmap`.
 
 ---
 
-## 19. Driver em C e Rotinas Assembly
+## 19. Driver Assembly — API Pública
 
-### 19.1 `/dev/mem` e `mmap` — acesso ao hardware a partir do Linux
+O driver é definido em `api.h` e implementado em `rotinas.s`. Toda a comunicação com o hardware ocorre dentro dessas rotinas, isolando completamente a aplicação C dos detalhes de MMIO e syscalls.
 
-O Linux que roda no HPS protege o acesso direto a endereços físicos. O caminho padrão é abrir `/dev/mem` — um arquivo especial que representa toda a memória física do sistema — e usar `mmap` para criar um mapeamento entre o endereço físico do barramento Lightweight HPS-to-FPGA (`0xFF200000`) e um ponteiro virtual acessível pelo processo:
+```c
+/* api.h — interface pública do driver */
 
+/* Ciclo de vida */
+int  init_hw_asm(void);      /* 0 = sucesso, -1 = falha */
+void exit_hw_asm(void);
+
+/* Controle */
+void reset_hw_asm(void);
+void start_asm(void);
+
+/* Carga de dados */
+void carregar_img_asm (void *buffer);   /* 784 pixels uint8  */
+void carregar_w_asm   (void *buffer);   /* 100.352 pesos uint16 */
+void carregar_bias_asm(void *buffer);   /* 128 bias uint16   */
+void carregar_beta_asm(void *buffer);   /* 1.280 betas uint16 */
+
+/* Status — retorna valor bruto; preenche dados[0..4] */
+uint32_t status_asm(uint32_t *dados);
 ```
-/dev/mem  →  mmap(0xFF200000, 4KB)  →  ponteiro virtual
-                     ↑
-             base do LW Bridge
-```
 
-A partir desse ponteiro, somar um offset equivale a acessar diretamente o registrador físico correspondente na FPGA, como se fosse uma escrita no barramento AXI.
+### Descrição de cada função
 
-### 19.2 Compilação e execução
+| Função | Descrição |
+|--------|-----------|
+| `init_hw_asm` | Abre `/dev/mem` via `SYS_OPEN` e mapeia 4 KB a partir de `0xFF200` via `SYS_MMAP2`. Salva o fd em `hw_fd` e o ponteiro base em `hw_base`. Retorna 0 ou -1. |
+| `exit_hw_asm` | Desfaz o mmap (`SYS_MUNMAP`) e fecha o fd (`SYS_CLOSE`). Idempotente: verifica `hw_base ≠ 0` antes de agir. |
+| `reset_hw_asm` | Aplica um pulso no bit de reset de `pio_hpswrite` (RESET=1 → aguarda ~150 ciclos → RESET=0). Reinicia a FSM do co-processador. |
+| `start_asm` | Envia opcode `0x5`, faz polling em `pio_readdata` bit 0 (`busy`) até a queda do sinal. Bloqueia a thread chamadora até o hardware terminar. |
+| `carregar_img_asm` | 784 iterações. `ldrb` lê 1 byte; monta instrução `[opcode=1][índice][pixel]`; STR em `pio_instrucao` + `pulse_hw`. |
+| `carregar_w_asm` | 100.352 pesos. 2 instruções por peso: opcode `0x6` (endereço de 17 bits) + opcode `0x2` (valor uint16). |
+| `carregar_bias_asm` | 128 bias. `ldrh` lê 2 bytes; opcode `0x3` + `pulse_hw`. |
+| `carregar_beta_asm` | 1.280 betas. `ldrh` lê 2 bytes; opcode `0x4` + `pulse_hw`. |
+| `status_asm` | Opcode `0x0` + `pulse_hw`. Lê `pio_readdata`. Extrai campos com `ubfx`: `dados[0]` = busy · `dados[1]` = done · `dados[2]` = error · `dados[3]` = dígito predito · `dados[4]` = ciclos. |
 
-O driver é compilado cruzando C com Assembly diretamente no HPS:
+### Macro `setup_hw` e sub-rotina `pulse_hw`
 
-```bash
-gcc instrucoes.c rotinas.s -o driver
-sudo ./driver
-```
+A **macro `setup_hw`** é chamada no início de cada função de carga e controle. Ela carrega o endereço base do LW Bridge (salvo em `hw_base`) e deriva três ponteiros de registrador:
 
-O `sudo` é necessário porque o acesso ao `/dev/mem` exige privilégios de root.
-
-### 19.3 `instrucoes.c` — interface interativa
-
-Ao executar, o programa apresenta um menu interativo onde o usuário escolhe qual instrução enviar ao co-processador. A depender da opção escolhida, o arquivo binário correspondente é aberto, seus dados são carregados em um buffer e a função assembly `processar_hardware_asm` é chamada com esse buffer, o opcode adequado e o número de elementos a enviar:
-
-| Opção no menu | Arquivo lido | Opcode | Elementos |
+| Registrador | Offset | PIO | Direção |
 |---|---|---|---|
-| Carregar imagem | `quatro.bin` | `0x1` | 784 (uint8) |
-| Carregar pesos W | `pesos.bin` | `0x2` | 100 352 (int16) |
-| Carregar bias | `bias.bin` | `0x3` | 128 (int16) |
-| Carregar beta | `beta.bin` | `0x4` | 1 280 (int16) |
-| Start | — | `0x5` | — |
-| Status | — | `0x0` | — |
+| `r1` | `+0x20` | `pio_instrucao` | HPS → FPGA |
+| `r2` | `+0x10` | `pio_hpswrite` | HPS → FPGA (clock/reset) |
+| `r12` | `+0x00` | `pio_readdata` | FPGA → HPS |
 
-O fluxo completo de uma inferência exige executar as opções na seguinte ordem: carregar todos os pesos (W, bias, beta), carregar a imagem, disparar o `start` e então consultar o `status` para ler o dígito predito.
+A **sub-rotina `pulse_hw`** gera o pulso de clock manual que o `decodificador_isa.v` usa para registrar cada instrução:
 
-A separação entre C e Assembly foi intencional: o C cuida da lógica de alto nível (menu, leitura de arquivos, alocação de buffer) enquanto o assembly lida diretamente com as syscalls e os acessos ao hardware.
-
-### 19.4 `rotinas.s` — rotinas ARM Assembly
-
-A função `processar_hardware_asm(buffer, opcode, limite)` implementa em ARM assembly o ciclo completo de acesso ao hardware:
-
-**1. Abertura do `/dev/mem`** via syscall `SYS_OPEN` com flags `O_RDWR | O_SYNC` — o `O_SYNC` garante que nenhuma escrita seja cacheada pelo kernel antes de chegar ao hardware.
-
-**2. Mapeamento via `mmap2`** — mapeia 4 KB a partir do offset `0xFF200` (endereço físico `0xFF200000`) para um endereço virtual em `r8`. Três ponteiros são calculados a partir dele:
-
-| Registrador | Offset | PIO mapeado | Direção |
-|---|---|---|---|
-| `r1` | `+0x20` | `pio_instrucao` | HPS → FPGA (instrução 32 bits) |
-| `r2` | `+0x10` | `pio_hpswrite` | HPS → FPGA (pulso de clock) |
-| `r12` | `+0x00` | `pio_readdata` | FPGA → HPS (resultado/status) |
-
-**3. Despacho por opcode** — um bloco de comparações seleciona o caminho correto:
-
-- **Status (0x0):** escreve opcode 0 no `pio_instrucao`, pulsa, lê `pio_readdata`; verifica o bit `BUSY` e extrai os bits `[7:4]` com o dígito predito
-- **Start (0x5):** monta a palavra `0x5000_0000` e pulsa uma vez
-- **Pesos W (0x2):** protocolo de duas etapas por elemento — primeiro envia o endereço de 17 bits via opcode `0x6`, depois o dado via opcode `0x2` (necessário porque o campo `ADDR` da ISA tem apenas 12 bits e a `ram_pesos` tem 100 352 posições)
-- **Demais (img, bias, beta):** loop que lê 8 bits (imagem) ou 16 bits (pesos) do buffer, monta a palavra `[opcode(4) | addr(12) | data(16)]` e pulsa
-
-**4. `pulse_hw`** — sub-rotina que gera o pulso de escrita: escreve `0x2` em `pio_hpswrite` (borda de subida), aguarda ~150 ciclos de delay e escreve `0x0` (borda de descida). Esse sinal é o `hps_write` que o `decodificador_isa.v` usa para registrar a instrução.
-
-**5. Encerramento** — `munmap` desfaz o mapeamento e `close` fecha o `/dev/mem`.
+```
+pulse_hw:
+    escreve CTRL_CLK_BIT em pio_hpswrite   → borda de subida
+    aguarda ~150 ciclos de delay
+    escreve 0 em pio_hpswrite              → borda de descida
+    retorna
+```
 
 ---
 
-## 20. Estrutura da Pasta `hps/`
+## 18. Mapa de Registradores MMIO
+
+Base física: `0xFF200000` (Lightweight AXI Bridge, 4 KB mapeados via `/dev/mem`)
+
+| Endereço Físico | Nome | Direção | Descrição |
+|---|---|---|---|
+| `0xFF200000` | `pio_readdata` | Leitura (HPS ← FPGA) | Status, resultado e ciclos da inferência |
+| `0xFF200010` | `pio_hpswrite` | Escrita (HPS → FPGA) | Bit 1: clock manual · Bit 0: reset |
+| `0xFF200020` | `pio_instrucao` | Escrita (HPS → FPGA) | Instrução de 32 bits ao co-processador |
+
+### Campos de `pio_readdata`
 
 ```
-hps/
-├── instrucoes.c        ← driver em C com menu interativo
-├── rotinas.s           ← rotinas ARM assembly (syscalls + acesso ao hardware)
-├── hps_0.h             ← cabeçalho com offsets dos PIOs gerado a partir do soc_system.sopcinfo
-└── quartus/
-    ├── ghrd_top.v      ← top-level do projeto: instancia o soc_system (gerado pelo soc_system.qsys) e o elm_accel
-    ├── soc_system.qpf  ← arquivo de projeto Quartus
-    ├── soc_system.qsf  ← configurações de pinos e síntese
-    └── soc_system.qsys ← definição dos PIOs e conexões no Platform Designer
+ Bits [31:8]  │  Bits [7:4]  │  Bit [2]  │  Bit [1]  │  Bit [0]
+ ─────────────┼──────────────┼───────────┼───────────┼──────────
+ Ciclos       │  Dígito pred │  Error    │  Done     │  Busy
+ (contador)   │  (0–9)       │           │           │
 ```
 
-**Atenção:** o `ghrd_top.v` é o top-level do projeto Quartus — ele instancia tanto o `soc_system` (gerado pelo Platform Designer) quanto o `elm_accel` (co-processador desenvolvido no Marco 1), substituindo o top-level original do projeto base.
+### Campos de `pio_hpswrite`
+
+| Bit | Nome | Função |
+|-----|------|--------|
+| 1 | `hpswrite` | Pulso de clock — a FPGA registra a instrução na borda de subida |
+| 0 | `reset` | Mantido em 1 reinicia a FSM; retornar a 0 libera o reset |
+
+---
+
+## 19. Formato das Instruções ISA (32 bits)
+
+```
+ 31      28  27      16  15       0
+ ┌──────────┬──────────┬──────────┐
+ │  OPCODE  │   ADDR   │   DATA   │
+ │  (4 bits)│ (12 bits)│ (16 bits)│
+ └──────────┴──────────┴──────────┘
+```
+
+| Opcode | Nome | Formato | Descrição |
+|--------|------|---------|-----------|
+| `0x0` | STATUS | `[31:28]=0` | Lê `pio_readdata` com `ubfx` e preenche `dados[0..4]` |
+| `0x1` | STORE_IMG | `[31:28]=1 [27:16]=i [15:0]=pixel` | 1 byte por instrução; 784 iterações |
+| `0x2` | STORE_W | `[31:28]=2 [15:0]=valor` | Deve ser precedido por opcode `0x6` |
+| `0x3` | STORE_BIAS | `[31:28]=3 [27:16]=i [15:0]=bias` | 2 bytes por instrução; 128 iterações |
+| `0x4` | STORE_BETA | `[31:28]=4 [27:16]=i [15:0]=beta` | 2 bytes por instrução; 1280 iterações |
+| `0x5` | START | `[31:28]=5` | Dispara inferência; `start_asm` faz polling até `busy=0` |
+| `0x6` | STORE_W_ADDR | `[31:28]=6 [16:0]=endereço` | Define os 17 bits de endereço para a próxima escrita em `ram_pesos` |
+
+---
+
+## 20. Fluxo Completo de Inferência
+
+```
+ 1. init_hw_asm()          → open /dev/mem → mmap2 0xFF200 → salva hw_base
+ 2. reset_hw_asm()         → bit RESET=1 → aguarda → RESET=0
+ 3. carregar_img_asm(buf)  → 784× [STR opcode 1 + pulse_hw]
+ 4. carregar_w_asm(buf)    → 100.352× [STR opcode 6 + pulse_hw + STR opcode 2 + pulse_hw]
+ 5. carregar_bias_asm(buf) → 128× [STR opcode 3 + pulse_hw]
+ 6. carregar_beta_asm(buf) → 1.280× [STR opcode 4 + pulse_hw]
+ 7. start_asm()            → STR opcode 5 + polling busy até 0
+ 8. status_asm(estado)     → ubfx → estado[3] = dígito predito (0–9)
+                                  → estado[4] = ciclos de clock
+ 9. exit_hw_asm()          → munmap hw_base → close /dev/mem
+```
+
+> **Resultado:** `estado[3]` contém o dígito predito (0–9) e `estado[4]` a contagem de ciclos da inferência.
+
 ---
 
 <div align="center">
