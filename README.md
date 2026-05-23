@@ -38,13 +38,14 @@
 16. [Levantamento de Requisitos — Marco 2](#16-levantamento-de-requisitos--marco-2)
 17. [Visão Geral do Marco 2](#17-visão-geral-do-marco-2)
 18. [Configuração do Platform Designer](#18-configuração-do-platform-designer)
-19. [Geração do Cabeçalho de Endereços](#19-geração-do-cabeçalho-de-endereços)
-20. [Driver Assembly — API Pública](#20-driver-assembly--api-pública)
-21. [Mapa de Registradores MMIO](#21-mapa-de-registradores-mmio)
-22. [Formato das Instruções ISA (32 bits)](#22-formato-das-instruções-isa-32-bits)
-23. [Fluxo Completo de Inferência](#23-fluxo-completo-de-inferência)
-24. [Compilação e Execução — Marco 2](#24-compilação-e-execução--marco-2)
-25. [Teste de Estabilidade — Marco 2](#25-teste-de-estabilidade--marco-2)
+19. [Interfaces Externas](#19-Interfaces-Externas) 
+20. [Geração do Cabeçalho de Endereços](#19-geração-do-cabeçalho-de-endereços)
+21. [Driver Assembly — API Pública](#20-driver-assembly--api-pública)
+22. [Mapa de Registradores MMIO](#21-mapa-de-registradores-mmio)
+23. [Formato das Instruções ISA (32 bits)](#22-formato-das-instruções-isa-32-bits)
+24. [Fluxo Completo de Inferência](#23-fluxo-completo-de-inferência)
+25. [Compilação e Execução — Marco 2](#24-compilação-e-execução--marco-2)
+26. [Teste de Estabilidade — Marco 2](#25-teste-de-estabilidade--marco-2)
 
 
 ---
