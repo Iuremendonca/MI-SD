@@ -34,12 +34,17 @@
 14. [Equipe](#14-equipe)
 15. [Referências](#15-referências)
 
-### Marco 2 — Comunicação HPS↔FPGA
-16. [Visão Geral do Marco 2](#16-visão-geral-do-marco-2)
-17. [Configuração do Platform Designer](#17-configuração-do-platform-designer)
-18. [Geração do Cabeçalho de Endereços](#18-geração-do-cabeçalho-de-endereços)
-19. [Driver em C e Rotinas Assembly](#19-driver-em-c-e-rotinas-assembly)
-20. [Estrutura da Pasta `hps/`](#20-estrutura-da-pasta-hps)
+### Marco 2 — Integração HW↔Linux via Driver Assembly
+16. [Levantamento de Requisitos — Marco 2](#16-levantamento-de-requisitos--marco-2)
+17. [Visão Geral do Marco 2](#17-visão-geral-do-marco-2)
+18. [Configuração do Platform Designer](#18-configuração-do-platform-designer)
+19. [Geração do Cabeçalho de Endereços](#19-geração-do-cabeçalho-de-endereços)
+20. [Driver Assembly — API Pública](#20-driver-assembly--api-pública)
+21. [Mapa de Registradores MMIO](#21-mapa-de-registradores-mmio)
+22. [Formato das Instruções ISA (32 bits)](#22-formato-das-instruções-isa-32-bits)
+23. [Fluxo Completo de Inferência](#23-fluxo-completo-de-inferência)
+24. [Compilação e Execução — Marco 2](#24-compilação-e-execução--marco-2)
+25. [Teste de Estabilidade — Marco 2](#25-teste-de-estabilidade--marco-2)
 
 
 ---
@@ -697,9 +702,9 @@ MI-SD/
 
 ---
 
-## 14. Levantamento de Requisitos — Marco 2
+## 16. Levantamento de Requisitos — Marco 2
 
-### 14.1 Requisitos Funcionais
+### 16.1 Requisitos Funcionais
 
 | ID | Requisito |
 |----|-----------|
@@ -718,7 +723,7 @@ MI-SD/
 | RF-M2-13 | A aplicação de teste (`marco2.c`) deve executar 1.000 inferências consecutivas com a mesma imagem e verificar acurácia igual a 100% |
 | RF-M2-14 | Todos os protótipos da API devem ser declarados no cabeçalho público `api.h`, sem dependências além de `<stdint.h>` |
 
-### 14.2 Requisitos Não-Funcionais
+### 16.2 Requisitos Não-Funcionais
 
 | ID | Requisito |
 |----|-----------|
@@ -731,7 +736,7 @@ MI-SD/
 | RNF-M2-07 | A execução do driver requer privilégios de superusuário (`sudo`) devido ao acesso a `/dev/mem` |
 | RNF-M2-08 | O código Assembly deve ser documentado com comentários descrevendo a função de cada bloco, os registradores utilizados e os efeitos colaterais |
 
-### 14.3 Restrições
+### 16.3 Restrições
 
 | Restrição | Descrição |
 |-----------|-----------|
@@ -744,7 +749,7 @@ MI-SD/
 | **Ordem de carga** | Os dados (imagem, pesos, bias, beta) devem ser carregados completamente antes do `START`; o driver não impede violação dessa ordem |
 
 
-## 15. Visão Geral do Marco 2
+## 17. Visão Geral do Marco 2
 
 Este marco implementa o lado de software: o código que roda no processador ARM (HPS) da DE1-SoC e se comunica com o co-processador ELM sintetizado na FPGA. A comunicação é feita através do barramento **Lightweight HPS-to-FPGA AXI**, mapeado no endereço físico `0xFF200000`, permitindo ao ARM escrever e ler registradores da FPGA via ponteiros de memória.
 
@@ -780,7 +785,7 @@ Este marco implementa o lado de software: o código que roda no processador ARM 
 
 ---
 
-## 16. Configuração do Platform Designer
+## 18. Configuração do Platform Designer
 
 Três componentes **PIO (Parallel I/O)** foram adicionados ao `soc_system.qsys` no Platform Designer e conectados à porta `h2f_lw_axi_master` do HPS:
 
@@ -792,7 +797,7 @@ Após configurar os PIOs: **Generate > Generate HDL...** e recompilação do pro
 
 ---
 
-### 17 Interfaces Externas
+### 19. Interfaces Externas
 
 #### Interface com o co-processador (MMIO)
 
@@ -839,7 +844,7 @@ uint32_t status_asm(uint32_t *dados);  /* dados[0..4]; retorna valor bruto  */
 ---
 
 
-## 17. Geração do Cabeçalho de Endereços
+## 20. Geração do Cabeçalho de Endereços
 
 O cabeçalho `hps_0.h` foi gerado a partir do arquivo `.sopcinfo` do projeto para que o software conheça os offsets de cada PIO sem hardcodá-los:
 
@@ -851,30 +856,9 @@ O arquivo gerado define constantes como `PIO_INSTRUCAO_BASE`, `PIO_HPSWRITE_BASE
 
 ---
 
-## 18. Driver Assembly — API Pública
+## 21. Driver Assembly — API Pública
 
 O driver é definido em `api.h` e implementado em `rotinas.s`. Toda a comunicação com o hardware ocorre dentro dessas rotinas, isolando completamente a aplicação C dos detalhes de MMIO e syscalls.
-
-```c
-/* api.h — interface pública do driver */
-
-/* Ciclo de vida */
-int  init_hw_asm(void);      /* 0 = sucesso, -1 = falha */
-void exit_hw_asm(void);
-
-/* Controle */
-void reset_hw_asm(void);
-void start_asm(void);
-
-/* Carga de dados */
-void carregar_img_asm (void *buffer);   /* 784 pixels uint8  */
-void carregar_w_asm   (void *buffer);   /* 100.352 pesos uint16 */
-void carregar_bias_asm(void *buffer);   /* 128 bias uint16   */
-void carregar_beta_asm(void *buffer);   /* 1.280 betas uint16 */
-
-/* Status — retorna valor bruto; preenche dados[0..4] */
-uint32_t status_asm(uint32_t *dados);
-```
 
 ### Descrição de cada função
 
@@ -912,7 +896,7 @@ pulse_hw:
 
 ---
 
-## 19. Registradores MMIO
+## 22. Registradores MMIO
 
 ### Campos de `pio_readdata`
 
@@ -932,7 +916,7 @@ pulse_hw:
 
 ---
 
-## 20. Formato das Instruções ISA (32 bits)
+## 23. Formato das Instruções ISA (32 bits)
 
 ```
  31      28  27      16  15       0
@@ -954,7 +938,7 @@ pulse_hw:
 
 ---
 
-## 21. Fluxo Completo de Inferência
+## 24. Fluxo Completo de Inferência
 
 ```
  1. init_hw_asm()          → open /dev/mem → mmap2 0xFF200 → salva hw_base
@@ -973,7 +957,7 @@ pulse_hw:
 
 ---
 
-## 22. Compilação e Execução — Marco 2
+## 25. Compilação e Execução — Marco 2
 
 ### Compilação no HPS (DE1-SoC)
 
@@ -1003,7 +987,7 @@ sudo ./marco2
 
 ---
 
-## 23. Teste de Estabilidade — Marco 2
+## 26. Teste de Estabilidade — Marco 2
 
 O `marco2.c` executa **1000 inferências consecutivas** com a mesma imagem (`nove.bin`) para validar a estabilidade do sistema. A cada iteração o hardware é reiniciado com `reset_hw_asm()` e todos os dados são recarregados — o cenário mais exigente para verificar a ausência de estados residuais.
 
