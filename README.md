@@ -38,7 +38,7 @@
 16. [Levantamento de Requisitos — Marco 2](#16-levantamento-de-requisitos--marco-2)
 17. [Visão Geral do Marco 2](#17-visão-geral-do-marco-2)
 18. [Configuração do Platform Designer](#18-configuração-do-platform-designer)
-19. [Interfaces Externas](#19-Interfaces-Externas) 
+19. [Interfaces Externas](#19-interfaces-externas) 
 20. [Geração do Cabeçalho de Endereços](#19-geração-do-cabeçalho-de-endereços)
 21. [Driver Assembly — API Pública](#20-driver-assembly--api-pública)
 22. [Mapa de Registradores MMIO](#21-mapa-de-registradores-mmio)
@@ -939,8 +939,20 @@ pulse_hw:
 
 ---
 
-## 24. Fluxo Completo de Inferência
+## 24. Fluxo de Execução e Integração (C / Assembly)
 
+Para garantir a máxima eficiência e o correto alinhamento de dados entre o processador ARM e o coprocessador na FPGA, o sistema adota um fluxo estruturado de preparação de memória no ecossistema C antes da delegação de tarefas para as rotinas em Assembly.
+
+#### 1. Carga dos Arquivos Binários em Buffers (C)
+Todos os dados essenciais para o funcionamento da rede (como os pesos $W_H$, bias $B_H$, pesos de saída $\beta$ e as imagens do dataset MNIST) são lidos diretamente de arquivos binários e carregados na memória RAM utilizando estruturas de buffers gerenciadas em C.
+
+#### 2. Armazenamento como Inteiros Sem Sinal (Unsigned)
+No ambiente C, os dados extraídos dos binários são armazenados estritamente como tipos inteiros sem sinal (ex: uint16_t ou uint32_t).
+
+#### 3. Passagem de Parâmetros e Endereçamento Base para o Assembly
+A transição do fluxo de controle do software de alto nível (C) para o nível de máquina (Assembly) ocorre por meio de chamadas de funções da API do driver. No momento em que uma rotina em Assembly é invocada, o programa em C passa como argumento o *ponteiro base* (endereço de memória inicial) do buffer explicitamente relacionado àquela operação.
+
+#### 4. Fluxo em C
 ```
  1. init_hw_asm()          → open /dev/mem → mmap2 0xFF200 → salva hw_base
  2. reset_hw_asm()         → bit RESET=1 → aguarda → RESET=0
@@ -957,6 +969,7 @@ pulse_hw:
 > **Resultado:** `estado[3]` contém o dígito predito (0–9) e `estado[4]` a contagem de ciclos da inferência.
 
 ---
+
 
 ## 25. Compilação e Execução — Marco 2
 
