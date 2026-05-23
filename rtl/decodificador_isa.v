@@ -33,12 +33,12 @@ module decodificador_isa (
 
     reg [16:0] temp_w_addr;	// Endereço W configurado previamente por opcode 0x6
 
-	 reg [31:0] ciclo_count;	//
+	 reg [23:0] ciclo_count;	//
 
 	// Lógica do contador de ciclos
 	always @(posedge clk) begin
 		 if (!rst_n || start_pulse) begin
-			  ciclo_count <= 32'b0; // Reseta ao iniciar nova inferência
+			  ciclo_count <= 24'b0; // Reseta ao iniciar nova inferência
 		 end else if (fsm_busy) begin
 			  ciclo_count <= ciclo_count + 1'b1; // Incrementa enquanto a FSM trabalha
 		 end
@@ -74,15 +74,14 @@ module decodificador_isa (
         end else begin
 				// Default: desativa todos os enables (pulsos de 1 ciclo)
             {wren_w, wren_img, wren_bias, wren_beta, start_pulse} <= 5'b0;
-				
-				//Só executa quando: HPS está em modo write E FSM não está ocupada
-            if (!hps_write && !fsm_busy) begin
+				 
+				 if (!hps_write ) begin
                 case (opcode)
                     // STATUS: retorna palavra de estado ao HPS
-						  // Formato: [31:8]=0, [7:4]=resultado, [3]=0, [2]=error, [1]=done, [0]=busy
+						  // Formato: [31:8]=ciclos, [7:4]=resultado, [3]=0, [2]=error, [1]=done, [0]=busy
                     4'h0: begin
                         hps_readdata <= {
-                            24'b0,
+                            ciclo_count,
                             elm_result,   // Dígito predito (bits 7:4)
                             1'b0,
                             error_flag,   // Bit de erro persistente
@@ -90,7 +89,16 @@ module decodificador_isa (
                             fsm_busy      // Acelerador ocupado
                         };
                     end
+						  default: begin
+                        // Opcode inválido: erro já registrado no bloco de captura acima
+                    end
+						endcase
+					end
 
+				//Só executa quando: HPS está em modo write E FSM não está ocupada
+            if (!hps_write && !fsm_busy) begin
+                case (opcode)
+                  
                     // STORE IMG: escreve 1 pixel na RAM de imagem
                     4'h1: begin
                         img_addr    <= addr_in[9:0]; // Endereço do pixel (0..783)
