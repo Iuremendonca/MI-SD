@@ -743,7 +743,56 @@ MI-SD/
 | **Polling** | A espera pelo término da inferência é feita por polling ativo do bit `busy` em `pio_readdata`; interrupções não são utilizadas |
 | **Ordem de carga** | Os dados (imagem, pesos, bias, beta) devem ser carregados completamente antes do `START`; o driver não impede violação dessa ordem |
 
-### 14.4 Interfaces Externas
+
+## 15. Visão Geral do Marco 2
+
+Este marco implementa o lado de software: o código que roda no processador ARM (HPS) da DE1-SoC e se comunica com o co-processador ELM sintetizado na FPGA. A comunicação é feita através do barramento **Lightweight HPS-to-FPGA AXI**, mapeado no endereço físico `0xFF200000`, permitindo ao ARM escrever e ler registradores da FPGA via ponteiros de memória.
+
+### Visão da Stack Completa
+
+```
+┌─────────────────────────┐
+│   Aplicação C (marco2.c)│  chamadas de função C
+├─────────────────────────┤
+│  Driver Assembly        │  syscalls Linux + STR/LDR
+│     (rotinas.s)         │  diretos no barramento
+├─────────────────────────┤
+│  LW Bridge 0xFF200000   │  4 KB mapeados via /dev/mem
+│  ┌──────┬──────┬──────┐ │
+│  │READ  │CTRL  │INSTR │ │  offsets 0x00, 0x10, 0x20
+│  └──────┴──────┴──────┘ │
+├─────────────────────────┤
+│  Co-proc FPGA           │  ELM Inferência (elm_accel)
+│  (elm_accel)            │
+└─────────────────────────┘
+```
+
+### Fluxo de uma Inferência Completa via HPS
+
+1. Carregar pesos W (100.352 elementos) via opcode `STORE_W_ADDR` + `STORE_WEIGHTS`
+2. Carregar bias (128 elementos) via opcode `STORE_BIAS`
+3. Carregar pesos β (1.280 elementos) via opcode `STORE_BETA`
+4. Carregar imagem (784 pixels) via opcode `STORE_IMG`
+5. Disparar a FSM com `START`
+6. Consultar `STATUS` e ler o dígito predito em `[7:4]`
+
+> A ordem dos passos 1–4 é livre entre si, mas todos devem preceder o `START`. O driver não impede iniciar a inferência sem dados carregados — essa responsabilidade é do código chamador.
+
+---
+
+## 16. Configuração do Platform Designer
+
+Três componentes **PIO (Parallel I/O)** foram adicionados ao `soc_system.qsys` no Platform Designer e conectados à porta `h2f_lw_axi_master` do HPS:
+
+<img width="767" height="660" alt="image" src="https://github.com/user-attachments/assets/6e16c395-be9d-4126-b795-340f37011193" />
+
+Cada PIO foi exportado como `Conduit` e conectado no top-level `ghrd_top.v` (`fio_instrucao`, `fio_hps_write`, `fio_hps_readdata`), que chega às portas do módulo `elm_accel`.
+
+Após configurar os PIOs: **Generate > Generate HDL...** e recompilação do projeto para gravar o novo `.sof` na placa.
+
+---
+
+### 17 Interfaces Externas
 
 #### Interface com o co-processador (MMIO)
 
@@ -789,59 +838,6 @@ uint32_t status_asm(uint32_t *dados);  /* dados[0..4]; retorna valor bruto  */
 
 ---
 
-## 15. Visão Geral do Marco 2
-
-Este marco implementa o lado de software: o código que roda no processador ARM (HPS) da DE1-SoC e se comunica com o co-processador ELM sintetizado na FPGA. A comunicação é feita através do barramento **Lightweight HPS-to-FPGA AXI**, mapeado no endereço físico `0xFF200000`, permitindo ao ARM escrever e ler registradores da FPGA via ponteiros de memória.
-
-### Visão da Stack Completa
-
-```
-┌─────────────────────────┐
-│   Aplicação C (marco2.c)│  chamadas de função C
-├─────────────────────────┤
-│  Driver Assembly        │  syscalls Linux + STR/LDR
-│     (rotinas.s)         │  diretos no barramento
-├─────────────────────────┤
-│  LW Bridge 0xFF200000   │  4 KB mapeados via /dev/mem
-│  ┌──────┬──────┬──────┐ │
-│  │READ  │CTRL  │INSTR │ │  offsets 0x00, 0x10, 0x20
-│  └──────┴──────┴──────┘ │
-├─────────────────────────┤
-│  Co-proc FPGA           │  ELM Inferência (elm_accel)
-│  (elm_accel)            │
-└─────────────────────────┘
-```
-
-### Fluxo de uma Inferência Completa via HPS
-
-1. Carregar pesos W (100.352 elementos) via opcode `STORE_W_ADDR` + `STORE_WEIGHTS`
-2. Carregar bias (128 elementos) via opcode `STORE_BIAS`
-3. Carregar pesos β (1.280 elementos) via opcode `STORE_BETA`
-4. Carregar imagem (784 pixels) via opcode `STORE_IMG`
-5. Disparar a FSM com `START`
-6. Consultar `STATUS` e ler o dígito predito em `[7:4]`
-
-> A ordem dos passos 1–4 é livre entre si, mas todos devem preceder o `START`. O driver não impede iniciar a inferência sem dados carregados — essa responsabilidade é do código chamador.
-
----
-
-## 16. Configuração do Platform Designer
-
-Três componentes **PIO (Parallel I/O)** foram adicionados ao `soc_system.qsys` no Platform Designer e conectados à porta `h2f_lw_axi_master` do HPS:
-
-<img width="767" height="660" alt="image" src="https://github.com/user-attachments/assets/6e16c395-be9d-4126-b795-340f37011193" />
-
-| Componente | Direção | Offset (LW Bridge) | Função |
-|---|---|---|---|
-| `pio_readdata` | Input (32 bits) | `0x0000` | Leva o resultado da FPGA ao HPS (`hps_readdata`) |
-| `pio_hpswrite` | Output (2 bits) | `0x0010` | Pulso de clock e reset (`hps_write`) |
-| `pio_instrucao` | Output (32 bits) | `0x0020` | Palavra de instrução de 32 bits (`instrucao`) |
-
-Cada PIO foi exportado como `Conduit` e conectado no top-level `ghrd_top.v` (`fio_instrucao`, `fio_hps_write`, `fio_hps_readdata`), que chega às portas do módulo `elm_accel`.
-
-Após configurar os PIOs: **Generate > Generate HDL...** e recompilação do projeto para gravar o novo `.sof` na placa.
-
----
 
 ## 17. Geração do Cabeçalho de Endereços
 
@@ -916,15 +912,7 @@ pulse_hw:
 
 ---
 
-## 19. Mapa de Registradores MMIO
-
-Base física: `0xFF200000` (Lightweight AXI Bridge, 4 KB mapeados via `/dev/mem`)
-
-| Endereço Físico | Nome | Direção | Descrição |
-|---|---|---|---|
-| `0xFF200000` | `pio_readdata` | Leitura (HPS ← FPGA) | Status, resultado e ciclos da inferência |
-| `0xFF200010` | `pio_hpswrite` | Escrita (HPS → FPGA) | Bit 1: clock manual · Bit 0: reset |
-| `0xFF200020` | `pio_instrucao` | Escrita (HPS → FPGA) | Instrução de 32 bits ao co-processador |
+## 19. Registradores MMIO
 
 ### Campos de `pio_readdata`
 
